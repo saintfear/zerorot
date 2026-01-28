@@ -75,6 +75,54 @@ function scheduleNewsletterJob() {
 }
 
 /**
+ * Get stored high-quality content that hasn't been used in recent newsletters
+ */
+async function getUnusedStoredContent(userId, limit = 5) {
+  // Get content items that:
+  // 1. Belong to this user
+  // 2. Have high score (>= 0.9)
+  // 3. Haven't been used in any newsletters (or only in old ones)
+  const storedItems = await prisma.contentItem.findMany({
+    where: {
+      userId: userId,
+      score: { gte: 0.9 },
+      // Exclude items that are in newsletters from the last 7 days
+      newsletterItems: {
+        none: {
+          newsletter: {
+            sentAt: {
+              gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) // Last 7 days
+            }
+          }
+        }
+      }
+    },
+    orderBy: [
+      { score: 'desc' },
+      { discoveredAt: 'desc' }
+    ],
+    take: limit * 2 // Get more to allow for deduplication
+  });
+
+  // Filter out mock posts (SQLite doesn't support startsWith in Prisma)
+  const realItems = storedItems.filter(item => !(item.instagramId || '').startsWith('mock_'));
+
+  // Deduplicate by caption
+  const deduped = dedupeByCaptionKeepFirst(realItems.map(item => ({
+    instagramId: item.instagramId,
+    url: item.url,
+    caption: item.caption,
+    imageUrl: item.imageUrl,
+    author: item.author,
+    hashtags: item.hashtags,
+    score: item.score,
+    id: item.id
+  }))).slice(0, limit);
+
+  return deduped;
+}
+
+/**
  * Send newsletter to a single user
  */
 async function sendNewsletterToUser(user) {
@@ -95,65 +143,123 @@ async function sendNewsletterToUser(user) {
 
   console.log(`📬 Sending newsletter to ${user.email}...`);
 
-  // Discover and score content (use user's Instagram cookies when set)
-  const rawPosts = await instagramScraper.searchByPreferences(preferences, {
-    cookies: user.instagramCookies || undefined
-  });
-  if (!rawPosts || rawPosts.length === 0) {
-    console.log(`No real Instagram posts for ${user.email}`);
-    return;
+  // First, try to use stored high-quality content that hasn't been used recently
+  const storedContent = await getUnusedStoredContent(user.id, 5);
+  
+  let savedItems = [];
+  
+  if (storedContent.length >= 5) {
+    // Use stored content if we have enough
+    console.log(`Using ${storedContent.length} stored high-quality posts for ${user.email}`);
+    savedItems = storedContent.map(item => ({
+      id: item.id,
+      instagramId: item.instagramId,
+      url: item.url,
+      caption: item.caption,
+      imageUrl: item.imageUrl,
+      author: item.author,
+      hashtags: item.hashtags,
+      score: item.score
+    }));
+  } else {
+    // Fall back to discovering new content if we don't have enough stored
+    console.log(`Only ${storedContent.length} stored posts available, discovering new content for ${user.email}...`);
+    
+    // Discover and score content (use user's Instagram cookies when set)
+    const rawPosts = await instagramScraper.searchByPreferences(preferences, {
+      cookies: user.instagramCookies || undefined
+    });
+    
+    if (!rawPosts || rawPosts.length === 0) {
+      // If no new posts and we have some stored content, use what we have
+      if (storedContent.length > 0) {
+        console.log(`No new posts found, using ${storedContent.length} stored posts`);
+        savedItems = storedContent.map(item => ({
+          id: item.id,
+          instagramId: item.instagramId,
+          url: item.url,
+          caption: item.caption,
+          imageUrl: item.imageUrl,
+          author: item.author,
+          hashtags: item.hashtags,
+          score: item.score
+        }));
+      } else {
+        console.log(`No real Instagram posts for ${user.email}`);
+        return;
+      }
+    } else {
+      // Load thumbs up/down feedback for personalization
+      const rated = await prisma.contentItem.findMany({
+        where: { userId: user.id, rating: { not: null } },
+        select: { caption: true, hashtags: true, rating: true }
+      });
+      const feedback = {
+        liked: rated.filter(r => r.rating === 1).map(r => ({
+          caption: r.caption || '',
+          hashtags: typeof r.hashtags === 'string' ? (() => { try { return JSON.parse(r.hashtags); } catch { return []; } })() : (r.hashtags || [])
+        })),
+        disliked: rated.filter(r => r.rating === -1).map(r => ({
+          caption: r.caption || '',
+          hashtags: typeof r.hashtags === 'string' ? (() => { try { return JSON.parse(r.hashtags); } catch { return []; } })() : (r.hashtags || [])
+        }))
+      };
+
+      const scoredPosts = await aiContentFilter.scoreContent(rawPosts, preferences, feedback);
+      const topPosts = dedupeByCaptionKeepFirst(scoredPosts.filter(post => (post.score || 0) >= 0.9)).slice(0, 5);
+
+      if (topPosts.length === 0 && storedContent.length === 0) {
+        console.log(`No relevant content found for ${user.email}`);
+        return;
+      }
+
+      // Combine stored content with new discoveries (prioritize stored)
+      const combined = [...storedContent, ...topPosts];
+      const finalDeduped = dedupeByCaptionKeepFirst(combined).slice(0, 5);
+
+      // Save new content items (stored ones already exist)
+      savedItems = await Promise.all(
+        finalDeduped.map(post => {
+          if (post.id) {
+            // Already stored, return as-is
+            return Promise.resolve({
+              id: post.id,
+              instagramId: post.instagramId,
+              url: post.url,
+              caption: post.caption,
+              imageUrl: post.imageUrl,
+              author: post.author,
+              hashtags: post.hashtags,
+              score: post.score
+            });
+          } else {
+            // New post, save it
+            return prisma.contentItem.upsert({
+              where: { instagramId: post.instagramId },
+              update: {
+                userId: user.id,
+                score: post.score,
+                caption: post.caption,
+                imageUrl: post.imageUrl,
+                author: post.author,
+                hashtags: Array.isArray(post.hashtags) ? JSON.stringify(post.hashtags) : (post.hashtags || null)
+              },
+              create: {
+                instagramId: post.instagramId,
+                url: post.url,
+                caption: post.caption,
+                imageUrl: post.imageUrl,
+                author: post.author,
+                hashtags: Array.isArray(post.hashtags) ? JSON.stringify(post.hashtags) : (post.hashtags || null),
+                score: post.score,
+                userId: user.id
+              }
+            });
+          }
+        })
+      );
+    }
   }
-
-  // Load thumbs up/down feedback for personalization
-  const rated = await prisma.contentItem.findMany({
-    where: { userId: user.id, rating: { not: null } },
-    select: { caption: true, hashtags: true, rating: true }
-  });
-  const feedback = {
-    liked: rated.filter(r => r.rating === 1).map(r => ({
-      caption: r.caption || '',
-      hashtags: typeof r.hashtags === 'string' ? (() => { try { return JSON.parse(r.hashtags); } catch { return []; } })() : (r.hashtags || [])
-    })),
-    disliked: rated.filter(r => r.rating === -1).map(r => ({
-      caption: r.caption || '',
-      hashtags: typeof r.hashtags === 'string' ? (() => { try { return JSON.parse(r.hashtags); } catch { return []; } })() : (r.hashtags || [])
-    }))
-  };
-
-  const scoredPosts = await aiContentFilter.scoreContent(rawPosts, preferences, feedback);
-  const topPosts = dedupeByCaptionKeepFirst(scoredPosts.filter(post => (post.score || 0) >= 0.9)).slice(0, 5);
-
-  if (topPosts.length === 0) {
-    console.log(`No relevant content found for ${user.email}`);
-    return;
-  }
-
-  // Save content items
-  const savedItems = await Promise.all(
-    topPosts.map(post =>
-      prisma.contentItem.upsert({
-        where: { instagramId: post.instagramId },
-        update: {
-          userId: user.id,
-          score: post.score,
-          caption: post.caption,
-          imageUrl: post.imageUrl,
-          author: post.author,
-          hashtags: Array.isArray(post.hashtags) ? JSON.stringify(post.hashtags) : (post.hashtags || null)
-        },
-        create: {
-          instagramId: post.instagramId,
-          url: post.url,
-          caption: post.caption,
-          imageUrl: post.imageUrl,
-          author: post.author,
-          hashtags: Array.isArray(post.hashtags) ? JSON.stringify(post.hashtags) : (post.hashtags || null),
-          score: post.score,
-          userId: user.id
-        }
-      })
-    )
-  );
 
   // Generate newsletter content
   const newsletterContent = await aiContentFilter.generateNewsletterContent(savedItems, preferences, {

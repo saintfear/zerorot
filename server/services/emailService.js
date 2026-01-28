@@ -63,47 +63,47 @@ class EmailService {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-    /* Email-safe, editorial/minimal style inspired by giga design studio */
+    /* Warm vintage “typewriter + antiqued glass” */
     body {
       margin: 0;
       padding: 0;
-      background: #f3f0ea; /* warm paper */
-      color: #14110f;      /* near-black ink */
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      line-height: 1.55;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
+      background: #f6efe1; /* parchment */
+      color: #2b231a;      /* warm ink */
+      font-family: "Courier New", Courier, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      line-height: 1.6;
     }
     .wrap {
       width: 100%;
       padding: 28px 12px;
     }
     .container {
-      max-width: 720px;
+      max-width: 680px;
       margin: 0 auto;
-      background: #fffaf0;
-      border: 2px solid #d4c4a8;
-      border-radius: 16px;
+      background: #fff7e8;
+      border: 2px solid #d7c4a1;
+      border-radius: 14px;
       overflow: hidden;
+      box-shadow: 0 10px 28px rgba(43,35,26,0.10);
     }
-    .topbar {
-      padding: 22px 22px 14px;
-      border-bottom: 1px solid #e3d8c6;
-      background: #fff6e6;
+    .glass {
+      background: rgba(255, 246, 230, 0.72);
+      border-bottom: 1px solid #e5d2b3;
+      padding: 18px 20px 14px;
     }
-    .brand {
-      font-size: 12px;
-      letter-spacing: 0.22em;
+    .mast {
+      font-family: Georgia, "Times New Roman", Times, serif;
+      letter-spacing: 0.12em;
       text-transform: uppercase;
-      color: #4a3d2e;
-      margin: 0 0 10px 0;
+      font-size: 12px;
+      color: #6b5b4a;
+      margin: 0 0 8px 0;
     }
     .title {
-      font-size: 26px;
-      line-height: 1.15;
       margin: 0;
-      letter-spacing: -0.02em;
-      color: #14110f;
+      font-size: 30px;
+      line-height: 1.1;
+      letter-spacing: 0.02em;
+      color: #2b231a;
     }
     .sub {
       margin: 10px 0 0 0;
@@ -111,23 +111,32 @@ class EmailService {
       color: #6b5b4a;
     }
     .content {
-      padding: 22px;
+      padding: 18px 20px 8px;
     }
-    /* Make common blocks look like “cards” even if content provides its own markup */
+    /* Gentle defaults for content blocks */
     .content h2, .content h3 {
-      color: #14110f;
-      letter-spacing: -0.01em;
+      font-family: Georgia, "Times New Roman", Times, serif;
+      color: #2b231a;
+      margin: 16px 0 8px;
+    }
+    .content p {
+      margin: 10px 0;
+      color: #2b231a;
     }
     .content a {
-      color: #4a3d2e;
+      color: #6a3e2a;
       text-decoration: underline;
       text-underline-offset: 2px;
     }
-    .content a:hover { opacity: 0.85; }
+    .rule {
+      height: 1px;
+      background: #ead9bf;
+      margin: 14px 0;
+    }
     .footer {
-      padding: 18px 22px 22px;
-      border-top: 1px solid #e3d8c6;
-      background: #fff6e6;
+      padding: 14px 20px 18px;
+      border-top: 1px solid #e5d2b3;
+      background: rgba(255, 246, 230, 0.72);
       font-size: 12px;
       color: #6b5b4a;
     }
@@ -137,17 +146,18 @@ class EmailService {
 <body>
   <div class="wrap">
     <div class="container">
-      <div class="topbar">
-        <p class="brand">ZeroRot</p>
-        <h1 class="title">Your daily signal</h1>
-        <p class="sub">Curated posts matched to your taste — with quick rating buttons.</p>
+      <div class="glass">
+        <p class="mast">ZeroRot · daily newsletter</p>
+        <h1 class="title">Today’s picks</h1>
+        <p class="sub">A warm little bundle of posts picked for your taste. Tap 👍 / 👎 right from your inbox.</p>
       </div>
       <div class="content">
+        <div class="rule"></div>
         ${content}
       </div>
       <div class="footer">
         <p><strong>ZeroRot</strong> — you’re receiving this because you signed up.</p>
-        <p>If you didn’t request this, you can ignore the email.</p>
+        <p>Tip: rating from the email teaches ZeroRot what to send you next.</p>
       </div>
     </div>
   </div>
