@@ -9,7 +9,6 @@ const contentRoutes = require('./routes/content');
 const newsletterRoutes = require('./routes/newsletters');
 const feedbackRoutes = require('./routes/feedback');
 const { scheduleNewsletterJob } = require('./jobs/newsletterScheduler');
-const { scheduleContentDiscovery } = require('./jobs/contentDiscoveryScheduler');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -59,8 +58,4 @@ app.listen(PORT, () => {
   // Schedule daily newsletter job
   scheduleNewsletterJob();
   console.log('📧 Newsletter scheduler initialized');
-  
-  // Schedule content discovery job (runs every 5 minutes)
-  scheduleContentDiscovery();
-  console.log('🔍 Content discovery scheduler initialized');
 });
