@@ -36,6 +36,8 @@ export const userAPI = {
 export const contentAPI = {
   discover: () => api.post('/content/discover'),
   getSaved: () => api.get('/content/saved'),
+  rate: (itemId: string, rating: 1 | -1) =>
+    api.put(`/content/items/${itemId}/rate`, { rating }),
 };
 
 export const newsletterAPI = {

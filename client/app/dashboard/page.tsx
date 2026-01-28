@@ -19,9 +19,11 @@ export default function Dashboard() {
     topics: [] as string[],
     style: '',
     keywords: [] as string[],
+    likedAccounts: [] as string[],
   });
   const [newTopic, setNewTopic] = useState('');
   const [newKeyword, setNewKeyword] = useState('');
+  const [newAccount, setNewAccount] = useState('');
   const [saving, setSaving] = useState(false);
   const [discovering, setDiscovering] = useState(false);
   const [sending, setSending] = useState(false);
@@ -76,13 +78,14 @@ export default function Dashboard() {
           topics: Array.isArray(prefs.topics) ? prefs.topics : [],
           style: prefs.style || '',
           keywords: Array.isArray(prefs.keywords) ? prefs.keywords : [],
+          likedAccounts: Array.isArray(prefs.likedAccounts) ? prefs.likedAccounts : [],
         });
       } else {
-        // Initialize with empty structure if no preferences
         setPreferences({
           topics: [],
           style: '',
           keywords: [],
+          likedAccounts: [],
         });
       }
     } catch (error: any) {
@@ -110,11 +113,21 @@ export default function Dashboard() {
   const handleDiscover = async () => {
     setDiscovering(true);
     try {
-      const response = await contentAPI.discover();
-      alert(`Found ${response.data.posts.length} relevant posts! Check your saved content.`);
-      // Reload saved content to show new discoveries
-      await loadSavedContent();
+      const discoverRes = await contentAPI.discover();
+      const newPosts: any[] = Array.isArray(discoverRes.data?.posts) ? discoverRes.data.posts : [];
+      // Fetch saved and merge with discover response in one step so new posts always show
+      const savedRes = await contentAPI.getSaved();
+      const fromServer: any[] = Array.isArray(savedRes.data) ? savedRes.data : [];
+      const byKey = new Map<string, any>();
+      const key = (p: any) => String(p?.id ?? p?.instagramId ?? '');
+      fromServer.forEach((p: any) => byKey.set(key(p), p));
+      newPosts.forEach((p: any) => byKey.set(key(p), p));
+      const merged = Array.from(byKey.values()).sort(
+        (a: any, b: any) => new Date(b.discoveredAt || 0).getTime() - new Date(a.discoveredAt || 0).getTime()
+      );
+      setSavedContent(merged);
       setShowSavedContent(true);
+      alert(`Found ${newPosts.length} relevant posts! Check your saved content.`);
     } catch (error: any) {
       alert(error.response?.data?.error || 'Failed to discover content');
     } finally {
@@ -168,6 +181,24 @@ export default function Dashboard() {
     setPreferences({
       ...preferences,
       keywords: preferences.keywords.filter((_, i) => i !== index),
+    });
+  };
+
+  const addAccount = () => {
+    const v = newAccount.trim().replace(/^@/, '');
+    if (v && !(preferences.likedAccounts || []).some(a => a.replace(/^@/, '').toLowerCase() === v.toLowerCase())) {
+      setPreferences({
+        ...preferences,
+        likedAccounts: [...(preferences.likedAccounts || []), v],
+      });
+      setNewAccount('');
+    }
+  };
+
+  const removeAccount = (index: number) => {
+    setPreferences({
+      ...preferences,
+      likedAccounts: (preferences.likedAccounts || []).filter((_, i) => i !== index),
     });
   };
 
@@ -340,6 +371,47 @@ export default function Dashboard() {
                 </div>
               </div>
 
+              <div>
+                <label className="block text-sm font-mono font-semibold text-antique-700 mb-2">
+                  Accounts you like
+                </label>
+                <p className="text-xs text-antique-600 font-mono mb-2">
+                  We’ll fetch posts from these profiles and use them to refine your taste. Add Instagram usernames (with or without @).
+                </p>
+                <div className="flex gap-2 mb-2">
+                  <input
+                    type="text"
+                    value={newAccount}
+                    onChange={(e) => setNewAccount(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && addAccount()}
+                    placeholder="e.g. nike, natgeo"
+                    className="flex-1 px-4 py-2 bg-parchment-light border-2 border-sepia-light rounded focus:ring-2 focus:ring-sepia-dark focus:border-sepia-dark text-antique-800 placeholder-antique-400 font-mono"
+                  />
+                  <button
+                    onClick={addAccount}
+                    className="px-4 py-2 bg-sepia hover:bg-sepia-dark text-antique-50 rounded font-typewriter font-bold transition-colors"
+                  >
+                    Add
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {(preferences.likedAccounts || []).map((account, index) => (
+                    <span
+                      key={index}
+                      className="inline-flex items-center gap-2 px-3 py-1 bg-green-50 text-green-800 rounded-full text-sm font-mono border border-green-200"
+                    >
+                      @{account.replace(/^@/, '')}
+                      <button
+                        onClick={() => removeAccount(index)}
+                        className="hover:text-green-900 font-bold"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+
               <button
                 onClick={handleSavePreferences}
                 disabled={saving}
@@ -359,7 +431,7 @@ export default function Dashboard() {
             <div className="space-y-4">
               <button
                 onClick={handleDiscover}
-                disabled={discovering || !preferences.topics || preferences.topics.length === 0}
+                disabled={discovering || ((!preferences.topics || preferences.topics.length === 0) && (!preferences.likedAccounts || preferences.likedAccounts.length === 0))}
                 className="w-full bg-sepia hover:bg-sepia-dark text-antique-50 py-3 rounded font-typewriter font-bold tracking-wide transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
               >
                 {discovering ? 'Discovering...' : 'Discover Content'}
@@ -367,7 +439,7 @@ export default function Dashboard() {
 
               <button
                 onClick={handleSendNewsletter}
-                disabled={sending || !preferences.topics || preferences.topics.length === 0}
+                disabled={sending || ((!preferences.topics || preferences.topics.length === 0) && (!preferences.likedAccounts || preferences.likedAccounts.length === 0))}
                 className="w-full bg-antique-600 hover:bg-antique-700 text-antique-50 py-3 rounded font-typewriter font-bold tracking-wide transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
               >
                 {sending ? 'Sending...' : 'Send Test Newsletter'}
@@ -499,11 +571,44 @@ export default function Dashboard() {
                               ))}
                             </div>
                           )}
-                          {item.score && (
+                          {item.score != null && (
                             <p className="text-xs text-antique-600 font-mono">
                               Relevance: {(item.score * 100).toFixed(0)}%
                             </p>
                           )}
+                          <div className="flex items-center gap-2 mt-2">
+                            <span className="text-xs text-antique-600 font-mono mr-1">Rate for better picks:</span>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  await contentAPI.rate(item.id, 1);
+                                  await loadSavedContent();
+                                } catch (e) {
+                                  // ignore
+                                }
+                              }}
+                              title="Thumbs up — more like this"
+                              className={`p-1.5 rounded border-2 font-mono text-sm transition-colors ${item.rating === 1 ? 'bg-green-100 border-green-500 text-green-800' : 'bg-parchment-light border-sepia-light text-antique-600 hover:border-sepia hover:bg-sepia-light'}`}
+                            >
+                              👍
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  await contentAPI.rate(item.id, -1);
+                                  await loadSavedContent();
+                                } catch (e) {
+                                  // ignore
+                                }
+                              }}
+                              title="Thumbs down — less like this"
+                              className={`p-1.5 rounded border-2 font-mono text-sm transition-colors ${item.rating === -1 ? 'bg-red-100 border-red-500 text-red-800' : 'bg-parchment-light border-sepia-light text-antique-600 hover:border-sepia hover:bg-sepia-light'}`}
+                            >
+                              👎
+                            </button>
+                          </div>
                           <a
                             href={item.url}
                             target="_blank"

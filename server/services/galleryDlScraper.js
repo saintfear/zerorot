@@ -287,62 +287,82 @@ class GalleryDlScraper {
 
   /**
    * Fetch Instagram posts from a user profile
+   * @param {string} username - Instagram username (no @)
+   * @param {number} [limit=20]
+   * @param {{ cookies?: string }} [options] - Netscape-format cookies for login
    */
-  async fetchUserPosts(username, limit = 20) {
+  async fetchUserPosts(username, limit = 20, options = {}) {
     if (!(await this.isInstalled())) {
       throw new Error('gallery-dl is not installed');
     }
 
-    try {
-      const url = `https://www.instagram.com/${username}/`;
+    const cleanUser = String(username).replace(/^@/, '').trim();
+    if (!cleanUser) return [];
 
+    let tempCookiesFile = null;
+    try {
+      const url = `https://www.instagram.com/${cleanUser}/`;
       const tempDir = path.join(__dirname, '../../temp');
       await fs.mkdir(tempDir, { recursive: true });
-      const outputFile = path.join(tempDir, `user_${username}_${Date.now()}.json`);
+      const outputFile = path.join(tempDir, `user_${cleanUser}_${Date.now()}.json`);
 
-      const commandPrefix = this.galleryDlPath.includes('python3') 
-        ? this.galleryDlPath 
-        : this.galleryDlPath;
-      
-      const command = `${commandPrefix} --dump-json --range 1-${limit} "${url}" 2>/dev/null > "${outputFile}" || true`;
+      let cookiesPath = null;
+      if (options.cookies && typeof options.cookies === 'string' && options.cookies.trim().length > 0) {
+        const userCookiesFile = path.join(tempDir, `cookies_user_${Date.now()}_${Math.random().toString(36).slice(2)}.txt`);
+        await fs.writeFile(userCookiesFile, options.cookies.trim(), 'utf8');
+        cookiesPath = userCookiesFile;
+        tempCookiesFile = userCookiesFile;
+      } else {
+        const possibleCookiePaths = [
+          path.join(process.env.HOME || '', '.config/gallery-dl/cookies.txt'),
+          path.join(process.env.HOME || '', 'cookies.txt'),
+          path.join(__dirname, '../../cookies.txt'),
+        ];
+        for (const p of possibleCookiePaths) {
+          try {
+            await fs.access(p);
+            cookiesPath = p;
+            break;
+          } catch (_) {}
+        }
+      }
+      const cookiesFlag = cookiesPath ? `--cookies "${cookiesPath}"` : '';
+
+      const commandPrefix = this.galleryDlPath.includes('python3') ? this.galleryDlPath : this.galleryDlPath;
+      const command = `${commandPrefix} --dump-json ${cookiesFlag} --range 1-${limit} "${url}" 2>&1 > "${outputFile}" || true`;
 
       try {
-        await execAsync(command, { maxBuffer: 10 * 1024 * 1024 });
+        await execAsync(command, { maxBuffer: 10 * 1024 * 1024, timeout: 30000 });
       } catch (error) {
-        console.log('gallery-dl command completed (may have warnings)');
+        console.log('gallery-dl user fetch completed (may have warnings)');
       }
 
       let posts = [];
       try {
         const fileContent = await fs.readFile(outputFile, 'utf-8');
         const lines = fileContent.trim().split('\n').filter(line => {
-          const trimmed = line.trim();
-          return trimmed && trimmed.startsWith('{') && trimmed.endsWith('}');
+          const t = line.trim();
+          return t && t.startsWith('{') && t.endsWith('}');
         });
-        
         posts = lines.map(line => {
           try {
             const parsed = JSON.parse(line);
-            if (parsed.url || parsed.shortcode || parsed.id) {
-              return parsed;
-            }
+            if (parsed.url || parsed.shortcode || parsed.id) return parsed;
             return null;
-          } catch (e) {
-            return null;
-          }
+          } catch (_) { return null; }
         }).filter(Boolean);
-
         await fs.unlink(outputFile).catch(() => {});
       } catch (error) {
-        console.error('Error reading gallery-dl output:', error.message);
+        console.error('Error reading gallery-dl user output:', error.message);
         await fs.unlink(outputFile).catch(() => {});
       }
 
       return posts.slice(0, limit).map(post => this.transformPost(post));
-
     } catch (error) {
-      console.error(`Error fetching user "${username}" with gallery-dl:`, error.message);
+      console.error(`Error fetching user "${cleanUser}" with gallery-dl:`, error.message);
       throw error;
+    } finally {
+      if (tempCookiesFile) await fs.unlink(tempCookiesFile).catch(() => {});
     }
   }
 
@@ -399,14 +419,31 @@ class GalleryDlScraper {
 
   /**
    * Search by user preferences
-   * @param {object} preferences - { topics, style, keywords }
+   * @param {object} preferences - { topics, style, keywords, likedAccounts?: string[] }
    * @param {{ cookies?: string }} [options] - Netscape-format cookies for Instagram
    */
   async searchByPreferences(preferences, options = {}) {
-    const { topics, style, keywords } = preferences;
+    const { topics, style, keywords, likedAccounts } = preferences;
     const allPosts = [];
 
     try {
+      // Fetch from accounts the user likes (strong taste signal)
+      const accounts = Array.isArray(likedAccounts) ? likedAccounts : [];
+      for (const account of accounts.slice(0, 5)) {
+        const user = String(account).replace(/^@/, '').trim();
+        if (!user) continue;
+        try {
+          console.log(`🔍 Fetching posts from account: @${user}`);
+          const posts = await this.fetchUserPosts(user, 8, options);
+          if (posts && posts.length > 0) {
+            console.log(`✅ Found ${posts.length} posts from @${user}`);
+            allPosts.push(...posts);
+          }
+        } catch (error) {
+          console.log(`⚠️ Failed to fetch @${user}:`, error.message);
+        }
+      }
+
       // Search by topics/hashtags
       if (topics && Array.isArray(topics) && topics.length > 0) {
         for (const topic of topics.slice(0, 3)) {

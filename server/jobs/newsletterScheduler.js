@@ -82,7 +82,28 @@ async function sendNewsletterToUser(user) {
   const rawPosts = await instagramScraper.searchByPreferences(preferences, {
     cookies: user.instagramCookies || undefined
   });
-  const scoredPosts = await aiContentFilter.scoreContent(rawPosts, preferences);
+  if (!rawPosts || rawPosts.length === 0) {
+    console.log(`No real Instagram posts for ${user.email}`);
+    return;
+  }
+
+  // Load thumbs up/down feedback for personalization
+  const rated = await prisma.contentItem.findMany({
+    where: { userId: user.id, rating: { not: null } },
+    select: { caption: true, hashtags: true, rating: true }
+  });
+  const feedback = {
+    liked: rated.filter(r => r.rating === 1).map(r => ({
+      caption: r.caption || '',
+      hashtags: typeof r.hashtags === 'string' ? (() => { try { return JSON.parse(r.hashtags); } catch { return []; } })() : (r.hashtags || [])
+    })),
+    disliked: rated.filter(r => r.rating === -1).map(r => ({
+      caption: r.caption || '',
+      hashtags: typeof r.hashtags === 'string' ? (() => { try { return JSON.parse(r.hashtags); } catch { return []; } })() : (r.hashtags || [])
+    }))
+  };
+
+  const scoredPosts = await aiContentFilter.scoreContent(rawPosts, preferences, feedback);
   const topPosts = scoredPosts.filter(post => (post.score || 0) > 0.6).slice(0, 5);
 
   if (topPosts.length === 0) {

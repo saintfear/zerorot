@@ -59,7 +59,27 @@ router.post('/send', authenticateToken, async (req, res) => {
     const rawPosts = await instagramScraper.searchByPreferences(preferences, {
       cookies: user.instagramCookies || undefined
     });
-    const scoredPosts = await aiContentFilter.scoreContent(rawPosts, preferences);
+    if (!rawPosts || rawPosts.length === 0) {
+      return res.status(404).json({ error: 'No real Instagram posts found. Connect Instagram and try again.' });
+    }
+
+    // Load thumbs up/down feedback for personalization
+    const rated = await prisma.contentItem.findMany({
+      where: { userId: user.id, rating: { not: null } },
+      select: { caption: true, hashtags: true, rating: true }
+    });
+    const feedback = {
+      liked: rated.filter(r => r.rating === 1).map(r => ({
+        caption: r.caption || '',
+        hashtags: typeof r.hashtags === 'string' ? (() => { try { return JSON.parse(r.hashtags); } catch { return []; } })() : (r.hashtags || [])
+      })),
+      disliked: rated.filter(r => r.rating === -1).map(r => ({
+        caption: r.caption || '',
+        hashtags: typeof r.hashtags === 'string' ? (() => { try { return JSON.parse(r.hashtags); } catch { return []; } })() : (r.hashtags || [])
+      }))
+    };
+
+    const scoredPosts = await aiContentFilter.scoreContent(rawPosts, preferences, feedback);
     // Use lower threshold (0.3) to match content discovery, or top 5 if none pass
     const filteredPosts = scoredPosts.filter(post => (post.score || 0) > 0.3);
     const topPosts = filteredPosts.length > 0 

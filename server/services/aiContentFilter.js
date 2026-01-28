@@ -60,6 +60,10 @@ class AIContentFilter {
     }));
 
     let feedbackBlock = '';
+    const accounts = preferences.likedAccounts;
+    if (accounts && Array.isArray(accounts) && accounts.length > 0) {
+      feedbackBlock += `\nAccounts the user likes (prefer content similar in style/topic): ${accounts.map(a => '@' + String(a).replace(/^@/, '')).join(', ')}`;
+    }
     if (feedback.liked && feedback.liked.length > 0) {
       feedbackBlock += `\nContent the user THUMBS-UP LIKED (prefer similar):\n${JSON.stringify(feedback.liked.slice(0, 15), null, 2)}`;
     }
@@ -82,61 +86,52 @@ Return JSON:
   }
 
   /**
-   * Fallback scoring using simple keyword matching
+   * Fallback scoring using preferences + thumbs up/down feedback
    */
-  fallbackScoring(posts, preferences) {
+  fallbackScoring(posts, preferences, feedback = {}) {
     const keywords = [
       ...(preferences.topics || []),
       ...(preferences.keywords || []),
       preferences.style
     ].filter(Boolean).map(k => k.toLowerCase());
 
-    // If no keywords, give all posts a moderate score
-    if (keywords.length === 0) {
-      return posts.map(post => ({
-        ...post,
-        score: 0.5
-      }));
+    const likedAccountSet = new Set(
+      (preferences.likedAccounts || []).map(a => String(a).replace(/^@/, '').toLowerCase())
+    );
+
+    const likedTerms = new Set();
+    (feedback.liked || []).forEach(item => {
+      (item.hashtags || []).forEach(t => likedTerms.add(String(t).toLowerCase().replace('#', '')));
+      (item.caption || '').split(/\s+/).filter(w => w.length > 2).forEach(w => likedTerms.add(w.toLowerCase()));
+    });
+    const dislikedTerms = new Set();
+    (feedback.disliked || []).forEach(item => {
+      (item.hashtags || []).forEach(t => dislikedTerms.add(String(t).toLowerCase().replace('#', '')));
+      (item.caption || '').split(/\s+/).filter(w => w.length > 2).forEach(w => dislikedTerms.add(w.toLowerCase()));
+    });
+
+    if (keywords.length === 0 && likedTerms.size === 0) {
+      return posts.map(post => ({ ...post, score: 0.5 }));
     }
 
     return posts.map(post => {
       const caption = (post.caption || '').toLowerCase();
-      const hashtags = Array.isArray(post.hashtags) 
-        ? post.hashtags.join(' ').toLowerCase()
-        : (post.hashtags || '').toLowerCase();
+      const hashtags = Array.isArray(post.hashtags) ? post.hashtags.join(' ').toLowerCase() : (post.hashtags || '').toLowerCase();
       const text = `${caption} ${hashtags}`;
 
-      let score = 0.3; // Base score (lowered to allow more posts through)
+      let score = 0.3;
       let matches = 0;
-
       keywords.forEach(keyword => {
-        // Check for partial matches too
-        const keywordLower = keyword.toLowerCase();
-        if (text.includes(keywordLower)) {
-          matches++;
-          score += 0.15; // Increased per-match score
-        } else {
-          // Check for word parts (e.g., "cyberpunk" matches "cyber" or "punk")
-          const keywordParts = keywordLower.split(/[\s-]+/);
-          keywordParts.forEach(part => {
-            if (part.length > 3 && text.includes(part)) {
-              score += 0.05;
-            }
-          });
-        }
+        const k = keyword.toLowerCase();
+        if (text.includes(k)) { matches++; score += 0.15; }
       });
-
-      // Boost score if multiple keywords match
-      if (matches > 1) {
-        score += 0.1 * (matches - 1);
-      }
-
-      score = Math.min(1, score); // Cap at 1.0
-
-      return {
-        ...post,
-        score
-      };
+      [...likedTerms].slice(0, 20).forEach(term => { if (text.includes(term)) score += 0.12; });
+      [...dislikedTerms].slice(0, 20).forEach(term => { if (text.includes(term)) score -= 0.2; });
+      const postAuthor = (post.author || '').replace(/^@/, '').toLowerCase();
+      if (postAuthor && likedAccountSet.has(postAuthor)) score += 0.25;
+      if (matches > 1) score += 0.1 * (matches - 1);
+      score = Math.max(0, Math.min(1, score));
+      return { ...post, score };
     }).sort((a, b) => (b.score || 0) - (a.score || 0));
   }
 

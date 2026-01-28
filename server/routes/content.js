@@ -41,10 +41,11 @@ router.post('/discover', authenticateToken, async (req, res) => {
     }
 
     // Load thumbs up/down feedback for better personalization
-    const rated = await prisma.contentItem.findMany({
-      where: { userId: user.id, rating: { not: null }, instagramId: { not: { startsWith: 'mock_' } } },
-      select: { caption: true, hashtags: true, rating: true }
+    const ratedRows = await prisma.contentItem.findMany({
+      where: { userId: user.id, rating: { not: null } },
+      select: { caption: true, hashtags: true, rating: true, instagramId: true }
     });
+    const rated = ratedRows.filter(r => !(r.instagramId || '').startsWith('mock_'));
     const feedback = {
       liked: rated.filter(r => r.rating === 1).map(r => ({
         caption: r.caption || '',
@@ -66,12 +67,13 @@ router.post('/discover', authenticateToken, async (req, res) => {
       ? filteredPosts.slice(0, 10)
       : scoredPosts.slice(0, 5); // If no posts pass threshold, return top 5 anyway
 
-    // Save content items to database
+    // Save content items to database (always set userId so they show in this user's Saved Content)
     const savedItems = await Promise.all(
       topPosts.map(post =>
         prisma.contentItem.upsert({
           where: { instagramId: post.instagramId },
           update: {
+            userId: user.id,
             score: post.score,
             caption: post.caption,
             imageUrl: post.imageUrl,
@@ -106,15 +108,12 @@ router.post('/discover', authenticateToken, async (req, res) => {
 router.get('/saved', authenticateToken, async (req, res) => {
   try {
     const content = await prisma.contentItem.findMany({
-      where: {
-        userId: req.user.id,
-        instagramId: { not: { startsWith: 'mock_' } }
-      },
+      where: { userId: req.user.id },
       orderBy: { discoveredAt: 'desc' },
-      take: 50
+      take: 80
     });
-
-    res.json(content);
+    const realOnly = content.filter(item => !(item.instagramId || '').startsWith('mock_'));
+    res.json(realOnly.slice(0, 50));
   } catch (error) {
     console.error('Get saved content error:', error);
     res.status(500).json({ error: 'Internal server error' });
