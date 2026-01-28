@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Special+Elite&family=Courier+Prime:wght@400;700&display=swap');
+
+:root {
+  --foreground-rgb: 60, 40, 30;
+  --background-start-rgb: 250, 245, 235;
+  --background-end-rgb: 245, 240, 230;
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: linear-gradient(
+      to bottom,
+      rgb(var(--background-start-rgb)),
+      rgb(var(--background-end-rgb))
+    );
+  font-family: 'Courier Prime', 'Courier New', monospace;
+}
+
+/* Antique paper texture effect */
+.antique-bg {
+  background-color: #faf5eb;
+  background-image: 
+    radial-gradient(circle at 1px 1px, rgba(139, 115, 85, 0.15) 1px, transparent 0);
+  background-size: 20px 20px;
+}
+
+/* Typewriter text effect */
+.typewriter {
+  font-family: 'Special Elite', 'Courier New', monospace;
+  letter-spacing: 0.05em;
+}
+
+/* Warm antique card */
+.antique-card {
+  background: linear-gradient(135deg, #faf5eb 0%, #f5f0e6 100%);
+  border: 2px solid #d4c4a8;
+  box-shadow: 
+    0 4px 6px rgba(139, 115, 85, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}

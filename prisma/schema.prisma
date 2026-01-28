@@ -1,0 +1,63 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String   @id @default(cuid())
+  email            String   @unique
+  password         String
+  name             String?
+  preferences      String?  // Stores user content preferences as JSON string
+  instagramCookies String?  // Netscape-format cookies.txt for Instagram (login session)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  
+  newsletters Newsletter[]
+  contentItems ContentItem[]
+}
+
+model ContentItem {
+  id          String   @id @default(cuid())
+  instagramId String   @unique
+  url         String
+  caption     String?
+  imageUrl    String?
+  hashtags    String?  // Stores hashtags as JSON string array
+  author      String?
+  score       Float?   // AI relevance score
+  rating      Int?     // 1 = thumbs up, -1 = thumbs down, null = unrated (training signal)
+  discoveredAt DateTime @default(now())
+  
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  
+  newsletterItems NewsletterItem[]
+}
+
+model Newsletter {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  sentAt    DateTime @default(now())
+  subject   String
+  content   String   // HTML email content
+  
+  items     NewsletterItem[]
+}
+
+model NewsletterItem {
+  id           String   @id @default(cuid())
+  newsletterId String
+  newsletter   Newsletter @relation(fields: [newsletterId], references: [id])
+  contentItemId String
+  contentItem   ContentItem @relation(fields: [contentItemId], references: [id])
+  order        Int
+}

@@ -1,0 +1,36 @@
+{
+  "name": "zerorot",
+  "version": "1.0.0",
+  "description": "AI-powered Instagram content discovery and newsletter service",
+  "main": "server/index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "nodemon server/index.js",
+    "dev:client": "cd client && npm run dev",
+    "build": "cd client && npm run build",
+    "start": "node server/index.js",
+    "setup": "npm install && cd client && npm install"
+  },
+  "keywords": ["instagram", "newsletter", "ai", "content-discovery"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "prisma": "^5.7.1",
+    "@prisma/client": "^5.7.1",
+    "openai": "^4.20.1",
+    "nodemailer": "^6.9.7",
+    "node-cron": "^3.0.3",
+    "axios": "^1.6.2",
+    "cheerio": "^1.0.0-rc.12",
+    "puppeteer": "^21.6.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2",
+    "concurrently": "^8.2.2"
+  }
+}
