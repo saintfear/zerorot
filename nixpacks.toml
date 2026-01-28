@@ -1,22 +1,17 @@
 [variables]
-# Ensure pip --user binaries (gallery-dl) are in PATH at runtime
-PATH = "/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+# Keep a sane PATH at runtime
+PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 [phases.setup]
-# python3 + pip are needed to install gallery-dl
+# Install gallery-dl via Nix (avoid pip/PEP-668 issues).
 # Also explicitly include Node so `npm` exists during build.
-nixPkgs = ["nodejs_20", "python3", "python3Packages.pip"]
+nixPkgs = ["nodejs_20", "python3", "gallery-dl"]
 
 [phases.install]
 cmds = [
   "npm install",
   "cd client && npm install",
-  # Install gallery-dl into the container user site-packages
-  # Some Nix python builds don't ship with the pip module available to `python3 -m pip`.
-  # Try to bootstrap pip first, then use the pip3 executable.
-  "python3 -m ensurepip --upgrade || true",
-  "pip3 install --user --upgrade pip",
-  "pip3 install --user --upgrade gallery-dl"
+  # gallery-dl is provided by nixPkgs above
 ]
 
 [phases.build]
