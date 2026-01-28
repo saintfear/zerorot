@@ -19,7 +19,14 @@ class AIContentFilter {
     }
 
     try {
-      const prompt = this.createScoringPrompt(posts, userPreferences, feedback);
+      // Fast path: pre-score locally and only send the best candidates to OpenAI.
+      // This keeps requests small and reduces latency.
+      const maxAiCandidates = Number(process.env.AI_SCORE_CANDIDATES) > 0
+        ? Number(process.env.AI_SCORE_CANDIDATES)
+        : 15;
+      const baseRanked = this.fallbackScoring(posts, userPreferences, feedback);
+      const candidates = baseRanked.slice(0, Math.min(maxAiCandidates, baseRanked.length));
+      const prompt = this.createScoringPrompt(candidates, userPreferences, feedback);
 
       const response = await this.openai.chat.completions.create({
         model: 'gpt-4o-mini',
@@ -37,11 +44,11 @@ class AIContentFilter {
       });
 
       const result = JSON.parse(response.choices[0].message.content);
-      const scoredPosts = posts.map((post, index) => ({
+      const scoredCandidates = candidates.map((post, index) => ({
         ...post,
-        score: result.scores?.[index] != null ? result.scores[index] : 0.5
+        score: result.scores?.[index] != null ? result.scores[index] : (post.score ?? 0.5)
       }));
-      return scoredPosts.sort((a, b) => (b.score || 0) - (a.score || 0));
+      return scoredCandidates.sort((a, b) => (b.score || 0) - (a.score || 0));
     } catch (error) {
       console.error('Error scoring content with AI:', error);
       return this.fallbackScoring(posts, userPreferences, feedback);
@@ -161,6 +168,10 @@ Return JSON:
    * Generate newsletter content using AI
    */
   async generateNewsletterContent(topPosts, userPreferences) {
+    // Default to fast, deterministic template. Opt into AI with NEWSLETTER_USE_AI=true.
+    if (String(process.env.NEWSLETTER_USE_AI || '').toLowerCase() !== 'true') {
+      return this.fallbackNewsletterContent(topPosts, userPreferences);
+    }
     try {
       const postsSummary = topPosts.map(post => ({
         caption: post.caption,

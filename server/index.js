@@ -1,4 +1,6 @@
-require('dotenv').config();
+const path = require('path');
+// Always load the repo-root .env (even if you start the server from /server)
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const express = require('express');
 const cors = require('cors');
 const authRoutes = require('./routes/auth');

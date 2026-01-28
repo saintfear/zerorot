@@ -7,6 +7,14 @@ const aiContentFilter = require('../services/aiContentFilter');
 const router = express.Router();
 const prisma = new PrismaClient();
 
+function normalizeCaption(caption) {
+  if (!caption || typeof caption !== 'string') return '';
+  return caption
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 // Discover new content based on user preferences
 router.post('/discover', authenticateToken, async (req, res) => {
   try {
@@ -85,9 +93,25 @@ router.post('/discover', authenticateToken, async (req, res) => {
 
     // Get top *new* posts (score >= 0.9 only)
     const filteredPosts = newScoredPosts.filter(post => (post.score || 0) >= 0.9);
-    const topPosts = filteredPosts.length > 0 
-      ? filteredPosts.slice(0, 10)
-      : newScoredPosts.slice(0, 5); // If no posts pass threshold, return top 5 anyway
+    const candidatePosts = filteredPosts.length > 0
+      ? filteredPosts
+      : newScoredPosts; // If none meet threshold, still allow a small fallback slice below
+
+    // Deduplicate carousel/album items: don't show multiple posts with the same caption.
+    // Keep the highest-score item for each caption.
+    const sorted = [...candidatePosts].sort((a, b) => (b.score || 0) - (a.score || 0));
+    const byCaption = new Map();
+    const deduped = [];
+    for (const post of sorted) {
+      const key = normalizeCaption(post.caption);
+      if (key) {
+        if (byCaption.has(key)) continue;
+        byCaption.set(key, true);
+      }
+      deduped.push(post);
+      if (deduped.length >= 10) break;
+    }
+    const topPosts = deduped;
 
     // Save content items to database (always set userId so they show in this user's Saved Content)
     const savedItems = await Promise.all(
@@ -135,7 +159,17 @@ router.get('/saved', authenticateToken, async (req, res) => {
       take: 80
     });
     const realOnly = content.filter(item => !(item.instagramId || '').startsWith('mock_'));
-    res.json(realOnly.slice(0, 50));
+    // Also collapse carousel duplicates by caption (keep newest)
+    const seenCaptions = new Set();
+    const unique = [];
+    for (const item of realOnly) {
+      const key = normalizeCaption(item.caption || '');
+      if (key && seenCaptions.has(key)) continue;
+      if (key) seenCaptions.add(key);
+      unique.push(item);
+      if (unique.length >= 50) break;
+    }
+    res.json(unique);
   } catch (error) {
     console.error('Get saved content error:', error);
     res.status(500).json({ error: 'Internal server error' });

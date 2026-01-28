@@ -21,6 +21,23 @@ class GalleryDlScraper {
     this.findPath();
   }
 
+  async mapWithConcurrency(items, concurrency, fn) {
+    const results = [];
+    let i = 0;
+    const workers = Array.from({ length: Math.max(1, concurrency) }, async () => {
+      while (i < items.length) {
+        const idx = i++;
+        try {
+          results[idx] = await fn(items[idx], idx);
+        } catch (e) {
+          results[idx] = null;
+        }
+      }
+    });
+    await Promise.all(workers);
+    return results;
+  }
+
   async findPath() {
     this.galleryDlPath = await this.findGalleryDlPath();
   }
@@ -434,52 +451,43 @@ class GalleryDlScraper {
     const allPosts = [];
 
     try {
+      const concurrency = Number(process.env.SCRAPE_CONCURRENCY) > 0 ? Number(process.env.SCRAPE_CONCURRENCY) : 3;
+
       // Fetch from accounts the user likes (strong taste signal)
       const accounts = Array.isArray(likedAccounts) ? likedAccounts : [];
-      for (const account of accounts.slice(0, 5)) {
-        const user = String(account).replace(/^@/, '').trim();
-        if (!user) continue;
-        try {
-          console.log(`🔍 Fetching posts from account: @${user}`);
-          const posts = await this.fetchUserPosts(user, 8, options);
-          if (posts && posts.length > 0) {
-            console.log(`✅ Found ${posts.length} posts from @${user}`);
-            allPosts.push(...posts);
-          }
-        } catch (error) {
-          console.log(`⚠️ Failed to fetch @${user}:`, error.message);
-        }
-      }
+      const accountList = accounts
+        .slice(0, 5)
+        .map(a => String(a).replace(/^@/, '').trim())
+        .filter(Boolean);
+      const accountResults = await this.mapWithConcurrency(accountList, concurrency, async (user) => {
+        console.log(`🔍 Fetching posts from account: @${user}`);
+        const posts = await this.fetchUserPosts(user, 8, options);
+        if (posts && posts.length > 0) console.log(`✅ Found ${posts.length} posts from @${user}`);
+        return posts || [];
+      });
+      accountResults.filter(Boolean).forEach(arr => allPosts.push(...arr));
 
       // Search by topics/hashtags
       if (topics && Array.isArray(topics) && topics.length > 0) {
-        for (const topic of topics.slice(0, 3)) {
-          try {
-            console.log(`🔍 Fetching posts for hashtag: ${topic}`);
-            const posts = await this.fetchHashtagPosts(topic, 10, options);
-            if (posts && posts.length > 0) {
-              console.log(`✅ Found ${posts.length} posts for "${topic}"`);
-              allPosts.push(...posts);
-            }
-          } catch (error) {
-            console.log(`⚠️ Failed to fetch "${topic}":`, error.message);
-          }
-        }
+        const topicList = topics.slice(0, 3).filter(Boolean);
+        const topicResults = await this.mapWithConcurrency(topicList, concurrency, async (topic) => {
+          console.log(`🔍 Fetching posts for hashtag: ${topic}`);
+          const posts = await this.fetchHashtagPosts(topic, 10, options);
+          if (posts && posts.length > 0) console.log(`✅ Found ${posts.length} posts for "${topic}"`);
+          return posts || [];
+        });
+        topicResults.filter(Boolean).forEach(arr => allPosts.push(...arr));
       }
 
       // Search by keywords (as hashtags)
       if (keywords && Array.isArray(keywords) && keywords.length > 0) {
-        for (const keyword of keywords.slice(0, 2)) {
-          try {
-            console.log(`🔍 Fetching posts for keyword: ${keyword}`);
-            const posts = await this.fetchHashtagPosts(keyword, 5, options);
-            if (posts && posts.length > 0) {
-              allPosts.push(...posts);
-            }
-          } catch (error) {
-            console.log(`⚠️ Failed to fetch keyword "${keyword}":`, error.message);
-          }
-        }
+        const keywordList = keywords.slice(0, 2).filter(Boolean);
+        const keywordResults = await this.mapWithConcurrency(keywordList, concurrency, async (keyword) => {
+          console.log(`🔍 Fetching posts for keyword: ${keyword}`);
+          const posts = await this.fetchHashtagPosts(keyword, 5, options);
+          return posts || [];
+        });
+        keywordResults.filter(Boolean).forEach(arr => allPosts.push(...arr));
       }
 
       // Search by style
@@ -487,9 +495,7 @@ class GalleryDlScraper {
         try {
           console.log(`🔍 Fetching posts for style: ${style}`);
           const posts = await this.fetchHashtagPosts(style, 5, options);
-          if (posts && posts.length > 0) {
-            allPosts.push(...posts);
-          }
+          if (posts && posts.length > 0) allPosts.push(...posts);
         } catch (error) {
           console.log(`⚠️ Failed to fetch style "${style}":`, error.message);
         }
