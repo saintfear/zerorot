@@ -34,6 +34,25 @@ app.get('/api/health', (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 ZeroRot server running on http://localhost:${PORT}`);
   
+  // Debug: Check if email config is loaded (strip quotes from .env values)
+  const emailUserRaw = process.env.EMAIL_USER || '';
+  const emailPassRaw = process.env.EMAIL_PASS || '';
+  const emailUser = String(emailUserRaw).replace(/^["']|["']$/g, '').trim();
+  const emailPass = String(emailPassRaw).replace(/^["']|["']$/g, '').trim();
+  const emailConfigured = emailUser && 
+                          emailUser !== 'your-email@gmail.com' &&
+                          emailPass && 
+                          emailPass !== 'your-app-specific-password' &&
+                          emailUser.includes('@') &&
+                          emailPass.length >= 8;
+  console.log('📧 Email config status:', {
+    loaded: !!emailUserRaw && !!emailPassRaw,
+    userRaw: emailUserRaw ? `"${emailUserRaw.substring(0, 15)}..."` : 'NOT SET',
+    userClean: emailUser ? `${emailUser.substring(0, 15)}...` : 'NOT SET',
+    passLength: emailPass.length,
+    configured: emailConfigured
+  });
+  
   // Schedule daily newsletter job
   scheduleNewsletterJob();
   console.log('📧 Newsletter scheduler initialized');

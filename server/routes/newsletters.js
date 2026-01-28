@@ -149,10 +149,23 @@ router.post('/send', authenticateToken, async (req, res) => {
     });
 
     // Send email (if configured)
-    const emailConfigured = process.env.EMAIL_USER && 
-                            process.env.EMAIL_USER !== 'your-email@gmail.com' &&
-                            process.env.EMAIL_PASS && 
-                            process.env.EMAIL_PASS !== 'your-app-specific-password';
+    // Strip quotes if .env has them (dotenv sometimes includes quotes)
+    const emailUser = String(process.env.EMAIL_USER || '').replace(/^["']|["']$/g, '').trim();
+    const emailPass = String(process.env.EMAIL_PASS || '').replace(/^["']|["']$/g, '').trim();
+    const emailConfigured = emailUser && 
+                            emailUser !== 'your-email@gmail.com' &&
+                            emailPass && 
+                            emailPass !== 'your-app-specific-password' &&
+                            emailUser.includes('@') && // basic validation
+                            emailPass.length >= 8; // Gmail app passwords are 16 chars
+    
+    console.log('📧 Email config check:', {
+      hasUser: !!emailUser,
+      userValue: emailUser ? `${emailUser.substring(0, 5)}...` : 'missing',
+      hasPass: !!emailPass,
+      passLength: emailPass ? emailPass.length : 0,
+      configured: emailConfigured
+    });
     
     if (emailConfigured) {
       try {

@@ -2,13 +2,17 @@ const nodemailer = require('nodemailer');
 
 class EmailService {
   constructor() {
+    // Strip quotes from .env values (dotenv sometimes includes them)
+    const emailUser = String(process.env.EMAIL_USER || '').replace(/^["']|["']$/g, '').trim();
+    const emailPass = String(process.env.EMAIL_PASS || '').replace(/^["']|["']$/g, '').trim();
+    
     this.transporter = nodemailer.createTransport({
       host: process.env.EMAIL_HOST || 'smtp.gmail.com',
       port: parseInt(process.env.EMAIL_PORT || '587'),
       secure: false, // true for 465, false for other ports
       auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
+        user: emailUser,
+        pass: emailPass
       }
     });
   }
@@ -17,14 +21,17 @@ class EmailService {
    * Send newsletter email
    */
   async sendNewsletter(userEmail, subject, htmlContent) {
-    // Check if email is configured
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    // Check if email is configured (strip quotes)
+    const emailUser = String(process.env.EMAIL_USER || '').replace(/^["']|["']$/g, '').trim();
+    const emailPass = String(process.env.EMAIL_PASS || '').replace(/^["']|["']$/g, '').trim();
+    if (!emailUser || !emailPass) {
       throw new Error('Email not configured. Please set EMAIL_USER and EMAIL_PASS in .env');
     }
 
     try {
+      const emailUser = String(process.env.EMAIL_USER || '').replace(/^["']|["']$/g, '').trim();
       const mailOptions = {
-        from: `"ZeroRot" <${process.env.EMAIL_USER}>`,
+        from: `"ZeroRot" <${emailUser}>`,
         to: userEmail,
         subject: subject,
         html: this.wrapInTemplate(htmlContent)
