@@ -4,7 +4,8 @@ PATH = "/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin
 
 [phases.setup]
 # python3 + pip are needed to install gallery-dl
-nixPkgs = ["python3", "python3Packages.pip"]
+# Also explicitly include Node so `npm` exists during build.
+nixPkgs = ["nodejs_20", "python3", "python3Packages.pip"]
 
 [phases.install]
 cmds = [
