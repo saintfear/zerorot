@@ -7,6 +7,7 @@ const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const contentRoutes = require('./routes/content');
 const newsletterRoutes = require('./routes/newsletters');
+const feedbackRoutes = require('./routes/feedback');
 const { scheduleNewsletterJob } = require('./jobs/newsletterScheduler');
 
 const app = express();
@@ -24,6 +25,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/content', contentRoutes);
 app.use('/api/newsletters', newsletterRoutes);
+app.use('/api/feedback', feedbackRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

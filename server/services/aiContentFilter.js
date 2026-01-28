@@ -167,10 +167,10 @@ Return JSON:
   /**
    * Generate newsletter content using AI
    */
-  async generateNewsletterContent(topPosts, userPreferences) {
+  async generateNewsletterContent(topPosts, userPreferences, options = {}) {
     // Default to fast, deterministic template. Opt into AI with NEWSLETTER_USE_AI=true.
     if (String(process.env.NEWSLETTER_USE_AI || '').toLowerCase() !== 'true') {
-      return this.fallbackNewsletterContent(topPosts, userPreferences);
+      return this.fallbackNewsletterContent(topPosts, userPreferences, options);
     }
     try {
       const postsSummary = topPosts.map(post => ({
@@ -199,27 +199,52 @@ Write a warm greeting, brief intro, and descriptions for each post. Keep it fun 
         ]
       });
 
-      return response.choices[0].message.content;
+      // AI intro + deterministic post cards (with rating links when available)
+      const intro = response.choices[0].message.content;
+      const cards = this.renderPostCards(topPosts, userPreferences, options);
+      return `${intro}\n${cards}`;
     } catch (error) {
       console.error('Error generating newsletter content:', error);
       
       // Fallback: simple template
-      return this.fallbackNewsletterContent(topPosts, userPreferences);
+      return this.fallbackNewsletterContent(topPosts, userPreferences, options);
     }
+  }
+
+  renderPostCards(posts, preferences, options = {}) {
+    return this.fallbackNewsletterContent(posts, preferences, options);
   }
 
   /**
    * Fallback newsletter content
    */
-  fallbackNewsletterContent(posts, preferences) {
+  fallbackNewsletterContent(posts, preferences, options = {}) {
+    const { userId } = options;
+    const baseUrl = String(process.env.BACKEND_PUBLIC_URL || `http://localhost:${process.env.PORT || 4000}`).replace(/\/$/, '');
+    const { signRatingToken } = require('./feedbackToken');
+
     let content = `<h2>Good morning! ☀️</h2>`;
     content += `<p>Here's your personalized ZeroRot newsletter with the best ${preferences.topics?.[0] || 'content'} we found for you today!</p>`;
     
     posts.forEach((post, index) => {
+      const canRate = !!userId && !!post.id;
+      const upUrl = canRate ? `${baseUrl}/api/feedback/rate?t=${encodeURIComponent(signRatingToken({ userId, contentItemId: post.id, rating: 1 }))}` : null;
+      const downUrl = canRate ? `${baseUrl}/api/feedback/rate?t=${encodeURIComponent(signRatingToken({ userId, contentItemId: post.id, rating: -1 }))}` : null;
       content += `
         <div style="margin: 20px 0; padding: 15px; border: 1px solid #eee; border-radius: 8px;">
           <h3>Post ${index + 1}</h3>
           ${post.imageUrl ? `<img src="${post.imageUrl}" alt="Post image" style="max-width: 100%; height: auto; border-radius: 8px; margin-bottom: 10px;">` : ''}
+          ${canRate ? `
+            <div style="margin: 10px 0; display: flex; gap: 10px;">
+              <a href="${upUrl}" style="display:inline-block;padding:10px 14px;border-radius:8px;border:1px solid #22c55e;background:#dcfce7;color:#166534;text-decoration:none;font-weight:700;">
+                👍 Thumbs up
+              </a>
+              <a href="${downUrl}" style="display:inline-block;padding:10px 14px;border-radius:8px;border:1px solid #ef4444;background:#fee2e2;color:#991b1b;text-decoration:none;font-weight:700;">
+                👎 Thumbs down
+              </a>
+            </div>
+            <p style="margin: 0 0 10px 0; color: #6b7280; font-size: 12px;">Rate from your inbox to train ZeroRot.</p>
+          ` : ''}
           <p>${post.caption || 'Check out this amazing content!'}</p>
           ${post.author ? `<p><strong>By:</strong> ${post.author}</p>` : ''}
           <a href="${post.url}" style="color: #007bff; text-decoration: none;">View on Instagram →</a>

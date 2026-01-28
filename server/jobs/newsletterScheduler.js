@@ -6,6 +6,23 @@ const aiContentFilter = require('../services/aiContentFilter');
 
 const prisma = new PrismaClient();
 
+function normalizeCaption(caption) {
+  if (!caption || typeof caption !== 'string') return '';
+  return caption.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function dedupeByCaptionKeepFirst(posts) {
+  const seen = new Set();
+  const out = [];
+  for (const p of posts) {
+    const key = normalizeCaption(p.caption || '');
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+    out.push(p);
+  }
+  return out;
+}
+
 /**
  * Schedule daily newsletter job
  * Runs every day at 8:00 AM
@@ -104,7 +121,7 @@ async function sendNewsletterToUser(user) {
   };
 
   const scoredPosts = await aiContentFilter.scoreContent(rawPosts, preferences, feedback);
-  const topPosts = scoredPosts.filter(post => (post.score || 0) >= 0.9).slice(0, 5);
+  const topPosts = dedupeByCaptionKeepFirst(scoredPosts.filter(post => (post.score || 0) >= 0.9)).slice(0, 5);
 
   if (topPosts.length === 0) {
     console.log(`No relevant content found for ${user.email}`);
@@ -117,6 +134,7 @@ async function sendNewsletterToUser(user) {
       prisma.contentItem.upsert({
         where: { instagramId: post.instagramId },
         update: {
+          userId: user.id,
           score: post.score,
           caption: post.caption,
           imageUrl: post.imageUrl,
@@ -138,10 +156,9 @@ async function sendNewsletterToUser(user) {
   );
 
   // Generate newsletter content
-  const newsletterContent = await aiContentFilter.generateNewsletterContent(
-    topPosts,
-    preferences
-  );
+  const newsletterContent = await aiContentFilter.generateNewsletterContent(savedItems, preferences, {
+    userId: user.id
+  });
 
   const subject = `✨ Your ZeroRot Newsletter - ${new Date().toLocaleDateString()}`;
 

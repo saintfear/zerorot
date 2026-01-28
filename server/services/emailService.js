@@ -63,82 +63,92 @@ class EmailService {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
+    /* Email-safe, editorial/minimal style inspired by giga design studio */
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      line-height: 1.6;
-      color: #333;
-      max-width: 600px;
-      margin: 0 auto;
-      padding: 20px;
-      background-color: #f5f5f5;
+      margin: 0;
+      padding: 0;
+      background: #f3f0ea; /* warm paper */
+      color: #14110f;      /* near-black ink */
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    .wrap {
+      width: 100%;
+      padding: 28px 12px;
     }
     .container {
-      background-color: #ffffff;
-      border-radius: 12px;
-      padding: 30px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      max-width: 720px;
+      margin: 0 auto;
+      background: #fffaf0;
+      border: 2px solid #d4c4a8;
+      border-radius: 16px;
+      overflow: hidden;
     }
-    .header {
-      text-align: center;
-      margin-bottom: 30px;
-      padding-bottom: 20px;
-      border-bottom: 2px solid #f0f0f0;
+    .topbar {
+      padding: 22px 22px 14px;
+      border-bottom: 1px solid #e3d8c6;
+      background: #fff6e6;
     }
-    .header h1 {
-      color: #6366f1;
+    .brand {
+      font-size: 12px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: #4a3d2e;
+      margin: 0 0 10px 0;
+    }
+    .title {
+      font-size: 26px;
+      line-height: 1.15;
       margin: 0;
-      font-size: 28px;
+      letter-spacing: -0.02em;
+      color: #14110f;
+    }
+    .sub {
+      margin: 10px 0 0 0;
+      font-size: 13px;
+      color: #6b5b4a;
     }
     .content {
-      margin: 20px 0;
+      padding: 22px;
     }
-    .post-card {
-      margin: 25px 0;
-      padding: 20px;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      background-color: #fafafa;
+    /* Make common blocks look like “cards” even if content provides its own markup */
+    .content h2, .content h3 {
+      color: #14110f;
+      letter-spacing: -0.01em;
     }
-    .post-card img {
-      max-width: 100%;
-      height: auto;
-      border-radius: 8px;
-      margin-bottom: 15px;
-    }
-    .post-card h3 {
-      margin-top: 0;
-      color: #1f2937;
-    }
-    .post-card a {
-      color: #6366f1;
-      text-decoration: none;
-      font-weight: 500;
-    }
-    .post-card a:hover {
+    .content a {
+      color: #4a3d2e;
       text-decoration: underline;
+      text-underline-offset: 2px;
     }
+    .content a:hover { opacity: 0.85; }
     .footer {
-      margin-top: 40px;
-      padding-top: 20px;
-      border-top: 1px solid #e5e7eb;
-      text-align: center;
-      color: #6b7280;
-      font-size: 14px;
+      padding: 18px 22px 22px;
+      border-top: 1px solid #e3d8c6;
+      background: #fff6e6;
+      font-size: 12px;
+      color: #6b5b4a;
     }
+    .footer p { margin: 6px 0; }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="header">
-      <h1>✨ ZeroRot</h1>
-      <p style="color: #6b7280; margin: 5px 0;">Your daily dose of curated content</p>
-    </div>
-    <div class="content">
-      ${content}
-    </div>
-    <div class="footer">
-      <p>Made with ❤️ by ZeroRot</p>
-      <p>You're receiving this because you signed up for ZeroRot.</p>
+  <div class="wrap">
+    <div class="container">
+      <div class="topbar">
+        <p class="brand">ZeroRot</p>
+        <h1 class="title">Your daily signal</h1>
+        <p class="sub">Curated posts matched to your taste — with quick rating buttons.</p>
+      </div>
+      <div class="content">
+        ${content}
+      </div>
+      <div class="footer">
+        <p><strong>ZeroRot</strong> — you’re receiving this because you signed up.</p>
+        <p>If you didn’t request this, you can ignore the email.</p>
+      </div>
     </div>
   </div>
 </body>

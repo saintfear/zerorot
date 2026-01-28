@@ -726,6 +726,40 @@ export default function Dashboard() {
                                         {contentItem.caption.substring(0, 60)}...
                                       </p>
                                     )}
+                                    <div className="flex items-center gap-1 mt-1">
+                                      <button
+                                        type="button"
+                                        onClick={async () => {
+                                          try {
+                                            await contentAPI.rate(contentItem.id, 1);
+                                            await loadNewsletters();
+                                            await loadSavedContent();
+                                          } catch (e) {
+                                            // ignore
+                                          }
+                                        }}
+                                        title="Thumbs up — more like this"
+                                        className={`p-1 rounded border font-mono text-xs transition-colors ${contentItem.rating === 1 ? 'bg-green-100 border-green-500 text-green-800' : 'bg-parchment-light border-sepia-light text-antique-600 hover:border-sepia hover:bg-sepia-light'}`}
+                                      >
+                                        👍
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={async () => {
+                                          try {
+                                            await contentAPI.rate(contentItem.id, -1);
+                                            await loadNewsletters();
+                                            await loadSavedContent();
+                                          } catch (e) {
+                                            // ignore
+                                          }
+                                        }}
+                                        title="Thumbs down — less like this"
+                                        className={`p-1 rounded border font-mono text-xs transition-colors ${contentItem.rating === -1 ? 'bg-red-100 border-red-500 text-red-800' : 'bg-parchment-light border-sepia-light text-antique-600 hover:border-sepia hover:bg-sepia-light'}`}
+                                      >
+                                        👎
+                                      </button>
+                                    </div>
                                     {contentItem.url && (
                                       <a
                                         href={contentItem.url}

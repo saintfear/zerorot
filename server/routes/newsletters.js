@@ -8,6 +8,23 @@ const aiContentFilter = require('../services/aiContentFilter');
 const router = express.Router();
 const prisma = new PrismaClient();
 
+function normalizeCaption(caption) {
+  if (!caption || typeof caption !== 'string') return '';
+  return caption.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function dedupeByCaptionKeepFirst(posts) {
+  const seen = new Set();
+  const out = [];
+  for (const p of posts) {
+    const key = normalizeCaption(p.caption || '');
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+    out.push(p);
+  }
+  return out;
+}
+
 // Get user's newsletters
 router.get('/', authenticateToken, async (req, res) => {
   try {
@@ -83,8 +100,8 @@ router.post('/send', authenticateToken, async (req, res) => {
     // Only include very high-relevance posts (>= 0.9)
     const filteredPosts = scoredPosts.filter(post => (post.score || 0) >= 0.9);
     const topPosts = filteredPosts.length > 0 
-      ? filteredPosts.slice(0, 5)
-      : scoredPosts.slice(0, 5);
+      ? dedupeByCaptionKeepFirst(filteredPosts).slice(0, 5)
+      : dedupeByCaptionKeepFirst(scoredPosts).slice(0, 5);
 
     if (topPosts.length === 0) {
       return res.status(404).json({ 
@@ -98,6 +115,7 @@ router.post('/send', authenticateToken, async (req, res) => {
         prisma.contentItem.upsert({
           where: { instagramId: post.instagramId },
           update: {
+            userId: user.id,
             score: post.score,
             caption: post.caption,
             imageUrl: post.imageUrl,
@@ -118,11 +136,10 @@ router.post('/send', authenticateToken, async (req, res) => {
       )
     );
 
-    // Generate newsletter content
-    const newsletterContent = await aiContentFilter.generateNewsletterContent(
-      topPosts,
-      preferences
-    );
+    // Generate newsletter content (use savedItems so we can embed rating links by contentItemId)
+    const newsletterContent = await aiContentFilter.generateNewsletterContent(savedItems, preferences, {
+      userId: user.id
+    });
 
     const subject = `✨ Your ZeroRot Newsletter - ${new Date().toLocaleDateString()}`;
 
