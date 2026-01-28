@@ -12,8 +12,11 @@ cmds = [
   "npm install",
   "cd client && npm install",
   # Install gallery-dl into the container user site-packages
-  "python3 -m pip install --user --upgrade pip",
-  "python3 -m pip install --user --upgrade gallery-dl"
+  # Some Nix python builds don't ship with the pip module available to `python3 -m pip`.
+  # Try to bootstrap pip first, then use the pip3 executable.
+  "python3 -m ensurepip --upgrade || true",
+  "pip3 install --user --upgrade pip",
+  "pip3 install --user --upgrade gallery-dl"
 ]
 
 [phases.build]
