@@ -38,7 +38,7 @@ npm run dev
 
 - **Frontend**: Next.js, React, Tailwind CSS
 - **Backend**: Node.js, Express
-- **Database**: PostgreSQL with Prisma ORM
+- **Database**: SQLite with Prisma ORM
 - **AI**: OpenAI API
 - **Email**: Nodemailer
 - **Scheduling**: node-cron

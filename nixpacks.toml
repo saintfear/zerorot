@@ -1,0 +1,21 @@
+[variables]
+# Ensure pip --user binaries (gallery-dl) are in PATH at runtime
+PATH = "/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+[phases.setup]
+# python3 + pip are needed to install gallery-dl
+nixPkgs = ["python3", "python3Packages.pip"]
+
+[phases.install]
+cmds = [
+  "npm install",
+  "cd client && npm install",
+  # Install gallery-dl into the container user site-packages
+  "python3 -m pip install --user --upgrade pip",
+  "python3 -m pip install --user --upgrade gallery-dl"
+]
+
+[phases.build]
+cmds = [
+  "cd client && npm run build"
+]

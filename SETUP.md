@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - Node.js (v18 or higher)
-- PostgreSQL database
+- SQLite (no server needed)
 - OpenAI API key
 - Email account (Gmail or other SMTP service)
 
@@ -23,17 +23,12 @@ cd ..
 
 ### 2. Set Up Database
 
-1. Create a PostgreSQL database:
-```bash
-createdb zerorot
+1. Update `.env` with your SQLite database URL (repo-root relative):
+```
+DATABASE_URL="file:./dev.db"
 ```
 
-2. Update `.env` with your database URL:
-```
-DATABASE_URL="postgresql://username:password@localhost:5432/zerorot?schema=public"
-```
-
-3. Run migrations:
+2. Run migrations:
 ```bash
 npx prisma migrate dev
 npx prisma generate
@@ -43,7 +38,7 @@ npx prisma generate
 
 Copy `.env.example` to `.env` and fill in:
 
-- **DATABASE_URL**: Your PostgreSQL connection string
+- **DATABASE_URL**: Your SQLite connection string (example: `file:./dev.db`)
 - **JWT_SECRET**: A random secret string for JWT tokens
 - **OPENAI_API_KEY**: Your OpenAI API key (get from https://platform.openai.com)
 - **EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS**: Your SMTP email credentials
@@ -108,9 +103,8 @@ The newsletter job runs daily at 8:00 AM. To test immediately:
 ## Troubleshooting
 
 **Database connection errors:**
-- Ensure PostgreSQL is running
-- Check DATABASE_URL format
-- Verify database exists
+- Check `DATABASE_URL` format (SQLite looks like `file:./dev.db`)
+- Ensure the process can write to the folder where the DB file lives
 
 **Email not sending:**
 - Verify SMTP credentials
