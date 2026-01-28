@@ -97,7 +97,7 @@ class GalleryDlScraper {
    * Fetch Instagram posts from a hashtag
    * @param {string} hashtag
    * @param {number} [limit=20]
-   * @param {{ cookies?: string }} [options] - Netscape-format cookies.txt content (per-user Instagram login)
+   * @param {{ cookies?: string, page?: number }} [options] - Netscape-format cookies.txt + page for pagination
    */
   async fetchHashtagPosts(hashtag, limit = 20, options = {}) {
     // Ensure path is found
@@ -130,6 +130,10 @@ class GalleryDlScraper {
       
       console.log(`📥 Fetching posts for hashtag "${hashtag}" using gallery-dl...`);
       
+      const page = Number(options.page) > 0 ? Number(options.page) : 1;
+      const start = (page - 1) * limit + 1;
+      const end = page * limit;
+
       // Cookies: per-user content wins, then global file paths
       let cookiesPath = null;
       if (options.cookies && typeof options.cookies === 'string' && options.cookies.trim().length > 0) {
@@ -160,8 +164,8 @@ class GalleryDlScraper {
       // For Python module, use the full command; for direct command, use as-is
       // Capture both stdout and stderr to see what's happening
       const command = isPythonModule
-        ? `${commandPrefix} --dump-json ${cookiesFlag} --range 1-${limit} "${url}" > "${outputFile}" 2>&1 || true`
-        : `${commandPrefix} --dump-json ${cookiesFlag} --range 1-${limit} "${url}" > "${outputFile}" 2>&1 || true`;
+        ? `${commandPrefix} --dump-json ${cookiesFlag} --range ${start}-${end} "${url}" > "${outputFile}" 2>&1 || true`
+        : `${commandPrefix} --dump-json ${cookiesFlag} --range ${start}-${end} "${url}" > "${outputFile}" 2>&1 || true`;
       
       if (!cookiesPath) {
         console.log('   No cookies - some content may require login. Connect Instagram in your dashboard.');
@@ -289,7 +293,7 @@ class GalleryDlScraper {
    * Fetch Instagram posts from a user profile
    * @param {string} username - Instagram username (no @)
    * @param {number} [limit=20]
-   * @param {{ cookies?: string }} [options] - Netscape-format cookies for login
+   * @param {{ cookies?: string, page?: number }} [options] - Netscape-format cookies for login + page for pagination
    */
   async fetchUserPosts(username, limit = 20, options = {}) {
     if (!(await this.isInstalled())) {
@@ -302,6 +306,9 @@ class GalleryDlScraper {
     let tempCookiesFile = null;
     try {
       const url = `https://www.instagram.com/${cleanUser}/`;
+      const page = Number(options.page) > 0 ? Number(options.page) : 1;
+      const start = (page - 1) * limit + 1;
+      const end = page * limit;
       const tempDir = path.join(__dirname, '../../temp');
       await fs.mkdir(tempDir, { recursive: true });
       const outputFile = path.join(tempDir, `user_${cleanUser}_${Date.now()}.json`);
@@ -329,7 +336,7 @@ class GalleryDlScraper {
       const cookiesFlag = cookiesPath ? `--cookies "${cookiesPath}"` : '';
 
       const commandPrefix = this.galleryDlPath.includes('python3') ? this.galleryDlPath : this.galleryDlPath;
-      const command = `${commandPrefix} --dump-json ${cookiesFlag} --range 1-${limit} "${url}" 2>&1 > "${outputFile}" || true`;
+      const command = `${commandPrefix} --dump-json ${cookiesFlag} --range ${start}-${end} "${url}" 2>&1 > "${outputFile}" || true`;
 
       try {
         await execAsync(command, { maxBuffer: 10 * 1024 * 1024, timeout: 30000 });

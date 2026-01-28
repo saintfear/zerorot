@@ -191,11 +191,11 @@ class InstagramScraper {
   /**
    * Search for content based on user preferences
    * @param {object} preferences - { topics, style, keywords }
-   * @param {object} [options] - { cookies: string } Netscape-format cookies.txt for logged-in Instagram
+   * @param {object} [options] - { cookies?: string, page?: number } cookies + page for pagination
    */
   async searchByPreferences(preferences, options = {}) {
     const { topics, style, keywords } = preferences;
-    const { cookies: userCookies } = options;
+    const { cookies: userCookies, page } = options;
     const allPosts = [];
     let scrapingFailed = false;
 
@@ -209,7 +209,7 @@ class InstagramScraper {
         if (userCookies) {
           console.log('   Using your Instagram session (cookies).');
         }
-        const posts = await galleryDlScraper.searchByPreferences(preferences, { cookies: userCookies });
+        const posts = await galleryDlScraper.searchByPreferences(preferences, { cookies: userCookies, page });
         if (posts && posts.length > 0) {
           console.log(`✅ Found ${posts.length} real Instagram posts via gallery-dl!`);
           return posts;

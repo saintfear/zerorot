@@ -35,6 +35,7 @@ export default function Dashboard() {
   const [showNewsletters, setShowNewsletters] = useState(false);
   const [instagramCookiesPaste, setInstagramCookiesPaste] = useState('');
   const [savingCookies, setSavingCookies] = useState(false);
+  const [discoverPage, setDiscoverPage] = useState(1);
   const router = useRouter();
 
   useEffect(() => {
@@ -113,7 +114,7 @@ export default function Dashboard() {
   const handleDiscover = async () => {
     setDiscovering(true);
     try {
-      const discoverRes = await contentAPI.discover();
+      const discoverRes = await contentAPI.discover(discoverPage);
       const newPosts: any[] = Array.isArray(discoverRes.data?.posts) ? discoverRes.data.posts : [];
       // Fetch saved and merge with discover response in one step so new posts always show
       const savedRes = await contentAPI.getSaved();
@@ -128,6 +129,7 @@ export default function Dashboard() {
       setSavedContent(merged);
       setShowSavedContent(true);
       alert(`Found ${newPosts.length} relevant posts! Check your saved content.`);
+      setDiscoverPage((prev) => prev + 1);
     } catch (error: any) {
       alert(error.response?.data?.error || 'Failed to discover content');
     } finally {

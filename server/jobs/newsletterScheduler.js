@@ -104,7 +104,7 @@ async function sendNewsletterToUser(user) {
   };
 
   const scoredPosts = await aiContentFilter.scoreContent(rawPosts, preferences, feedback);
-  const topPosts = scoredPosts.filter(post => (post.score || 0) > 0.6).slice(0, 5);
+  const topPosts = scoredPosts.filter(post => (post.score || 0) >= 0.9).slice(0, 5);
 
   if (topPosts.length === 0) {
     console.log(`No relevant content found for ${user.email}`);

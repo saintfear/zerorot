@@ -26,7 +26,7 @@ class AIContentFilter {
         messages: [
           {
             role: 'system',
-            content: 'You are a content curator that scores Instagram posts. Use the user\'s stated preferences and their thumbs-up / thumbs-down history to prefer content similar to what they liked and avoid content similar to what they disliked. Return a JSON object with a "scores" array (0-1) for each post.'
+            content: 'You are a content curator that scores Instagram posts. The user strongly prefers real, non-AI-generated content. When captions/hashtags suggest AI art (e.g. "ai art", "midjourney", "stable diffusion", "dalle", "generated with", "leonardo.ai"), heavily penalize those posts unless the user explicitly says they want AI art. Use the user\'s stated preferences and their thumbs-up / thumbs-down history to prefer content similar to what they liked and avoid content similar to what they disliked. Return a JSON object with a "scores" array (0-1) for each post.'
           },
           {
             role: 'user',
@@ -127,6 +127,28 @@ Return JSON:
       });
       [...likedTerms].slice(0, 20).forEach(term => { if (text.includes(term)) score += 0.12; });
       [...dislikedTerms].slice(0, 20).forEach(term => { if (text.includes(term)) score -= 0.2; });
+
+      // Strong penalty for AI-generated / AI-art style posts unless user explicitly wants them
+      const aiSignals = [
+        'ai art',
+        '#aiart',
+        'midjourney',
+        'stable diffusion',
+        'stablediffusion',
+        'dalle',
+        'dall-e',
+        'generated with ai',
+        'ai-generated',
+        'leonardo.ai',
+        'artificial intelligence art'
+      ];
+      if (!Array.isArray(preferences.topics) || !preferences.topics.some(t => /ai\s*art/i.test(String(t)))) {
+        const lowerText = text.toLowerCase();
+        if (aiSignals.some(sig => lowerText.includes(sig))) {
+          score -= 0.5;
+        }
+      }
+
       const postAuthor = (post.author || '').replace(/^@/, '').toLowerCase();
       if (postAuthor && likedAccountSet.has(postAuthor)) score += 0.25;
       if (matches > 1) score += 0.1 * (matches - 1);

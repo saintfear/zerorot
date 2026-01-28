@@ -80,8 +80,8 @@ router.post('/send', authenticateToken, async (req, res) => {
     };
 
     const scoredPosts = await aiContentFilter.scoreContent(rawPosts, preferences, feedback);
-    // Use lower threshold (0.3) to match content discovery, or top 5 if none pass
-    const filteredPosts = scoredPosts.filter(post => (post.score || 0) > 0.3);
+    // Only include very high-relevance posts (>= 0.9)
+    const filteredPosts = scoredPosts.filter(post => (post.score || 0) >= 0.9);
     const topPosts = filteredPosts.length > 0 
       ? filteredPosts.slice(0, 5)
       : scoredPosts.slice(0, 5);

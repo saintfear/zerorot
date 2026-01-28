@@ -30,10 +30,13 @@ router.post('/discover', authenticateToken, async (req, res) => {
       });
     }
 
+    const page = Number(req.body?.page) > 0 ? Number(req.body.page) : 1;
+
     // Scrape Instagram for content (use user's Instagram cookies when set)
     console.log('🔍 Discovering content for user:', user.email);
     const rawPosts = await instagramScraper.searchByPreferences(preferences, {
-      cookies: user.instagramCookies || undefined
+      cookies: user.instagramCookies || undefined,
+      page
     });
 
     if (!rawPosts || rawPosts.length === 0) {
@@ -61,11 +64,30 @@ router.post('/discover', authenticateToken, async (req, res) => {
     console.log('🤖 Scoring content with AI (using your thumbs up/down)...');
     const scoredPosts = await aiContentFilter.scoreContent(rawPosts, preferences, feedback);
 
-    // Get top posts (score > 0.3 for more lenient matching, or top 10 if we have few results)
-    const filteredPosts = scoredPosts.filter(post => (post.score || 0) > 0.3);
+    // Filter out posts this user has already saved (only surface truly new content)
+    const scoredIds = scoredPosts.map(post => post.instagramId).filter(Boolean);
+    const alreadySaved = await prisma.contentItem.findMany({
+      where: {
+        userId: user.id,
+        instagramId: { in: scoredIds }
+      },
+      select: { instagramId: true }
+    });
+    const seenSet = new Set(alreadySaved.map(i => i.instagramId));
+    const newScoredPosts = scoredPosts.filter(post => !seenSet.has(post.instagramId));
+
+    if (newScoredPosts.length === 0) {
+      return res.json({
+        message: 'No new posts found (you have already saved everything in this slice). Try adjusting topics/accounts or come back later.',
+        posts: []
+      });
+    }
+
+    // Get top *new* posts (score >= 0.9 only)
+    const filteredPosts = newScoredPosts.filter(post => (post.score || 0) >= 0.9);
     const topPosts = filteredPosts.length > 0 
       ? filteredPosts.slice(0, 10)
-      : scoredPosts.slice(0, 5); // If no posts pass threshold, return top 5 anyway
+      : newScoredPosts.slice(0, 5); // If no posts pass threshold, return top 5 anyway
 
     // Save content items to database (always set userId so they show in this user's Saved Content)
     const savedItems = await Promise.all(

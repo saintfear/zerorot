@@ -34,7 +34,7 @@ export const userAPI = {
 };
 
 export const contentAPI = {
-  discover: () => api.post('/content/discover'),
+  discover: (page?: number) => api.post('/content/discover', page ? { page } : {}),
   getSaved: () => api.get('/content/saved'),
   rate: (itemId: string, rating: 1 | -1) =>
     api.put(`/content/items/${itemId}/rate`, { rating }),
