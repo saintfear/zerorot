@@ -10,11 +10,9 @@ nixPkgs = ["nodejs_20", "python3", "gallery-dl"]
 [phases.install]
 cmds = [
   "npm install",
-  "cd client && npm install",
-  # gallery-dl is provided by nixPkgs above
+  # NOTE: This Railway service runs only the Express API (`node server/index.js`).
+  # The Next.js frontend is deployed separately (e.g. Vercel), so we skip client install/build here.
 ]
 
 [phases.build]
-cmds = [
-  "cd client && npm run build"
-]
+cmds = []
