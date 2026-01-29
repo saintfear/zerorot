@@ -1,6 +1,5 @@
-const axios = require('axios');
-const cheerio = require('cheerio');
 const galleryDlScraper = require('./galleryDlScraper');
+const apifyInstagramScraper = require('./managedScraper/apifyInstagramScraper');
 
 /**
  * Instagram Scraper Service
@@ -48,8 +47,26 @@ class InstagramScraper {
    * @param {object} [options] - { cookies?: string, page?: number } cookies + page for pagination
    */
   async searchByPreferences(preferences, options = {}) {
-    const { topics, style, keywords } = preferences;
     const { cookies: userCookies, page } = options;
+    const provider = String(process.env.INSTAGRAM_SCRAPE_PROVIDER || '').toLowerCase().trim();
+
+    // Managed scraping provider (recommended for production).
+    // Uses Apify which handles anti-bot mitigation and returns structured JSON.
+    if (provider === 'apify') {
+      if (!apifyInstagramScraper.isConfigured()) {
+        console.log('⚠️ INSTAGRAM_SCRAPE_PROVIDER=apify but APIFY_API_TOKEN is not set. Falling back to gallery-dl.');
+      } else {
+        try {
+          const posts = await this.searchByPreferencesViaApify(preferences, { page });
+          if (posts && posts.length > 0) return posts;
+          console.log('⚠️ Apify returned 0 posts. Falling back to gallery-dl.');
+        } catch (e) {
+          console.log('⚠️ Apify scraping failed:', e?.message || e);
+          console.log('   Falling back to gallery-dl.');
+        }
+      }
+    }
+
     const allPosts = [];
     let scrapingFailed = false;
 
@@ -100,6 +117,63 @@ class InstagramScraper {
     );
 
     return uniquePosts;
+  }
+
+  cleanHashtag(tag) {
+    return String(tag || '')
+      .trim()
+      .replace(/^#/, '')
+      .replace(/[^\w]/g, '')
+      .toLowerCase();
+  }
+
+  /**
+   * Managed scraping via Apify.
+   * This only scrapes public pages (profiles/hashtags). We do NOT pass login cookies.
+   */
+  async searchByPreferencesViaApify(preferences, options = {}) {
+    const { topics, style, keywords, likedAccounts } = preferences || {};
+    const page = Number(options.page) > 0 ? Number(options.page) : 1;
+
+    // Keep runs small/polite. Pagination is coarse; we just increase limits slightly per page.
+    const baseLimit = Number(process.env.APIFY_RESULTS_LIMIT) > 0 ? Number(process.env.APIFY_RESULTS_LIMIT) : 30;
+    const resultsLimit = Math.min(120, baseLimit + (page - 1) * 10);
+
+    const urls = [];
+
+    // Accounts the user likes (strong taste signal)
+    (Array.isArray(likedAccounts) ? likedAccounts : [])
+      .slice(0, 5)
+      .map(a => String(a).replace(/^@/, '').trim())
+      .filter(Boolean)
+      .forEach(u => urls.push(`https://www.instagram.com/${u}/`));
+
+    // Topics/hashtags
+    (Array.isArray(topics) ? topics : [])
+      .slice(0, 4)
+      .map(t => this.cleanHashtag(t))
+      .filter(Boolean)
+      .forEach(t => urls.push(`https://www.instagram.com/explore/tags/${t}/`));
+
+    // Keywords (as hashtags)
+    (Array.isArray(keywords) ? keywords : [])
+      .slice(0, 3)
+      .map(k => this.cleanHashtag(k))
+      .filter(Boolean)
+      .forEach(k => urls.push(`https://www.instagram.com/explore/tags/${k}/`));
+
+    // Style (as hashtag)
+    if (style && String(style).trim()) {
+      const t = this.cleanHashtag(style);
+      if (t) urls.push(`https://www.instagram.com/explore/tags/${t}/`);
+    }
+
+    const uniqueUrls = Array.from(new Set(urls));
+    if (uniqueUrls.length === 0) return [];
+
+    console.log(`✅ Using Apify managed scraping (${uniqueUrls.length} sources, limit ${resultsLimit})...`);
+    const posts = await apifyInstagramScraper.scrapePostsByDirectUrls(uniqueUrls, { resultsLimit });
+    return posts || [];
   }
 }
 

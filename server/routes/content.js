@@ -3,6 +3,7 @@ const { PrismaClient } = require('@prisma/client');
 const { authenticateToken } = require('../middleware/auth');
 const instagramScraper = require('../services/instagramScraper');
 const aiContentFilter = require('../services/aiContentFilter');
+const discoveryEngineV2 = require('../services/discoveryEngineV2');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -69,8 +70,15 @@ router.post('/discover', authenticateToken, async (req, res) => {
     };
 
     // Score and rank content using AI (with feedback for training)
-    console.log('🤖 Scoring content with AI (using your thumbs up/down)...');
-    const scoredPosts = await aiContentFilter.scoreContent(rawPosts, preferences, feedback);
+    const engine = String(process.env.DISCOVERY_ENGINE || '').toLowerCase().trim();
+    let scoredPosts = [];
+    if (engine === 'v2') {
+      console.log('🤖 Scoring content with Discovery Engine v2 (vision + embeddings + engagement)...');
+      scoredPosts = await discoveryEngineV2.scoreAndRank(rawPosts, preferences, feedback);
+    } else {
+      console.log('🤖 Scoring content with AI (using your thumbs up/down)...');
+      scoredPosts = await aiContentFilter.scoreContent(rawPosts, preferences, feedback);
+    }
 
     // Filter out posts this user has already saved (only surface truly new content)
     const scoredIds = scoredPosts.map(post => post.instagramId).filter(Boolean);
@@ -117,14 +125,23 @@ router.post('/discover', authenticateToken, async (req, res) => {
     const savedItems = await Promise.all(
       topPosts.map(post =>
         prisma.contentItem.upsert({
-          where: { instagramId: post.instagramId },
+          where: { userId_instagramId: { userId: user.id, instagramId: post.instagramId } },
           update: {
             userId: user.id,
             score: post.score,
             caption: post.caption,
             imageUrl: post.imageUrl,
             author: post.author,
-            hashtags: Array.isArray(post.hashtags) ? JSON.stringify(post.hashtags) : (post.hashtags || null)
+            hashtags: Array.isArray(post.hashtags) ? JSON.stringify(post.hashtags) : (post.hashtags || null),
+            likeCount: typeof post.likeCount === 'number' ? post.likeCount : null,
+            commentCount: typeof post.commentCount === 'number' ? post.commentCount : null,
+            viewCount: typeof post.viewCount === 'number' ? post.viewCount : null,
+            engagementScore: typeof post.engagementScore === 'number' ? post.engagementScore : null,
+            imageDescription: post.imageDescription ? String(post.imageDescription) : null,
+            visionTags: Array.isArray(post.visionTags) ? JSON.stringify(post.visionTags) : (post.visionTags || null),
+            embedding: Array.isArray(post.embedding) ? JSON.stringify(post.embedding) : (post.embedding || null),
+            embeddingSim: typeof post.embeddingSim === 'number' ? post.embeddingSim : null,
+            source: post.source ? String(post.source) : null
           },
           create: {
             instagramId: post.instagramId,
@@ -134,7 +151,16 @@ router.post('/discover', authenticateToken, async (req, res) => {
             author: post.author,
             hashtags: Array.isArray(post.hashtags) ? JSON.stringify(post.hashtags) : (post.hashtags || null),
             score: post.score,
-            userId: user.id
+            userId: user.id,
+            likeCount: typeof post.likeCount === 'number' ? post.likeCount : null,
+            commentCount: typeof post.commentCount === 'number' ? post.commentCount : null,
+            viewCount: typeof post.viewCount === 'number' ? post.viewCount : null,
+            engagementScore: typeof post.engagementScore === 'number' ? post.engagementScore : null,
+            imageDescription: post.imageDescription ? String(post.imageDescription) : null,
+            visionTags: Array.isArray(post.visionTags) ? JSON.stringify(post.visionTags) : (post.visionTags || null),
+            embedding: Array.isArray(post.embedding) ? JSON.stringify(post.embedding) : (post.embedding || null),
+            embeddingSim: typeof post.embeddingSim === 'number' ? post.embeddingSim : null,
+            source: post.source ? String(post.source) : null
           }
         })
       )

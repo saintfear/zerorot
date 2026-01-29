@@ -4,6 +4,7 @@ const { authenticateToken } = require('../middleware/auth');
 const emailService = require('../services/emailService');
 const instagramScraper = require('../services/instagramScraper');
 const aiContentFilter = require('../services/aiContentFilter');
+const discoveryEngineV2 = require('../services/discoveryEngineV2');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -96,7 +97,10 @@ router.post('/send', authenticateToken, async (req, res) => {
       }))
     };
 
-    const scoredPosts = await aiContentFilter.scoreContent(rawPosts, preferences, feedback);
+    const engine = String(process.env.DISCOVERY_ENGINE || '').toLowerCase().trim();
+    const scoredPosts = engine === 'v2'
+      ? await discoveryEngineV2.scoreAndRank(rawPosts, preferences, feedback)
+      : await aiContentFilter.scoreContent(rawPosts, preferences, feedback);
     // Only include very high-relevance posts (>= 0.9)
     const filteredPosts = scoredPosts.filter(post => (post.score || 0) >= 0.9);
     const topPosts = filteredPosts.length > 0 
@@ -113,14 +117,23 @@ router.post('/send', authenticateToken, async (req, res) => {
     const savedItems = await Promise.all(
       topPosts.map(post =>
         prisma.contentItem.upsert({
-          where: { instagramId: post.instagramId },
+          where: { userId_instagramId: { userId: user.id, instagramId: post.instagramId } },
           update: {
             userId: user.id,
             score: post.score,
             caption: post.caption,
             imageUrl: post.imageUrl,
             author: post.author,
-            hashtags: Array.isArray(post.hashtags) ? JSON.stringify(post.hashtags) : (post.hashtags || null)
+            hashtags: Array.isArray(post.hashtags) ? JSON.stringify(post.hashtags) : (post.hashtags || null),
+            likeCount: typeof post.likeCount === 'number' ? post.likeCount : null,
+            commentCount: typeof post.commentCount === 'number' ? post.commentCount : null,
+            viewCount: typeof post.viewCount === 'number' ? post.viewCount : null,
+            engagementScore: typeof post.engagementScore === 'number' ? post.engagementScore : null,
+            imageDescription: post.imageDescription ? String(post.imageDescription) : null,
+            visionTags: Array.isArray(post.visionTags) ? JSON.stringify(post.visionTags) : (post.visionTags || null),
+            embedding: Array.isArray(post.embedding) ? JSON.stringify(post.embedding) : (post.embedding || null),
+            embeddingSim: typeof post.embeddingSim === 'number' ? post.embeddingSim : null,
+            source: post.source ? String(post.source) : null
           },
           create: {
             instagramId: post.instagramId,
@@ -130,7 +143,16 @@ router.post('/send', authenticateToken, async (req, res) => {
             author: post.author,
             hashtags: Array.isArray(post.hashtags) ? JSON.stringify(post.hashtags) : (post.hashtags || null),
             score: post.score,
-            userId: user.id
+            userId: user.id,
+            likeCount: typeof post.likeCount === 'number' ? post.likeCount : null,
+            commentCount: typeof post.commentCount === 'number' ? post.commentCount : null,
+            viewCount: typeof post.viewCount === 'number' ? post.viewCount : null,
+            engagementScore: typeof post.engagementScore === 'number' ? post.engagementScore : null,
+            imageDescription: post.imageDescription ? String(post.imageDescription) : null,
+            visionTags: Array.isArray(post.visionTags) ? JSON.stringify(post.visionTags) : (post.visionTags || null),
+            embedding: Array.isArray(post.embedding) ? JSON.stringify(post.embedding) : (post.embedding || null),
+            embeddingSim: typeof post.embeddingSim === 'number' ? post.embeddingSim : null,
+            source: post.source ? String(post.source) : null
           }
         })
       )

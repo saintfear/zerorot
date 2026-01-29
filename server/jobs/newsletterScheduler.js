@@ -3,6 +3,7 @@ const { PrismaClient } = require('@prisma/client');
 const emailService = require('../services/emailService');
 const instagramScraper = require('../services/instagramScraper');
 const aiContentFilter = require('../services/aiContentFilter');
+const discoveryEngineV2 = require('../services/discoveryEngineV2');
 
 const prisma = new PrismaClient();
 
@@ -120,7 +121,10 @@ async function sendNewsletterToUser(user) {
     }))
   };
 
-  const scoredPosts = await aiContentFilter.scoreContent(rawPosts, preferences, feedback);
+  const engine = String(process.env.DISCOVERY_ENGINE || '').toLowerCase().trim();
+  const scoredPosts = engine === 'v2'
+    ? await discoveryEngineV2.scoreAndRank(rawPosts, preferences, feedback)
+    : await aiContentFilter.scoreContent(rawPosts, preferences, feedback);
   const topPosts = dedupeByCaptionKeepFirst(scoredPosts.filter(post => (post.score || 0) >= 0.9)).slice(0, 5);
 
   if (topPosts.length === 0) {
@@ -132,14 +136,23 @@ async function sendNewsletterToUser(user) {
   const savedItems = await Promise.all(
     topPosts.map(post =>
       prisma.contentItem.upsert({
-        where: { instagramId: post.instagramId },
+        where: { userId_instagramId: { userId: user.id, instagramId: post.instagramId } },
         update: {
           userId: user.id,
           score: post.score,
           caption: post.caption,
           imageUrl: post.imageUrl,
           author: post.author,
-          hashtags: Array.isArray(post.hashtags) ? JSON.stringify(post.hashtags) : (post.hashtags || null)
+          hashtags: Array.isArray(post.hashtags) ? JSON.stringify(post.hashtags) : (post.hashtags || null),
+          likeCount: typeof post.likeCount === 'number' ? post.likeCount : null,
+          commentCount: typeof post.commentCount === 'number' ? post.commentCount : null,
+          viewCount: typeof post.viewCount === 'number' ? post.viewCount : null,
+          engagementScore: typeof post.engagementScore === 'number' ? post.engagementScore : null,
+          imageDescription: post.imageDescription ? String(post.imageDescription) : null,
+          visionTags: Array.isArray(post.visionTags) ? JSON.stringify(post.visionTags) : (post.visionTags || null),
+          embedding: Array.isArray(post.embedding) ? JSON.stringify(post.embedding) : (post.embedding || null),
+          embeddingSim: typeof post.embeddingSim === 'number' ? post.embeddingSim : null,
+          source: post.source ? String(post.source) : null
         },
         create: {
           instagramId: post.instagramId,
@@ -149,7 +162,16 @@ async function sendNewsletterToUser(user) {
           author: post.author,
           hashtags: Array.isArray(post.hashtags) ? JSON.stringify(post.hashtags) : (post.hashtags || null),
           score: post.score,
-          userId: user.id
+          userId: user.id,
+          likeCount: typeof post.likeCount === 'number' ? post.likeCount : null,
+          commentCount: typeof post.commentCount === 'number' ? post.commentCount : null,
+          viewCount: typeof post.viewCount === 'number' ? post.viewCount : null,
+          engagementScore: typeof post.engagementScore === 'number' ? post.engagementScore : null,
+          imageDescription: post.imageDescription ? String(post.imageDescription) : null,
+          visionTags: Array.isArray(post.visionTags) ? JSON.stringify(post.visionTags) : (post.visionTags || null),
+          embedding: Array.isArray(post.embedding) ? JSON.stringify(post.embedding) : (post.embedding || null),
+          embeddingSim: typeof post.embeddingSim === 'number' ? post.embeddingSim : null,
+          source: post.source ? String(post.source) : null
         }
       })
     )

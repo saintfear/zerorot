@@ -26,20 +26,37 @@ model User {
 
 model ContentItem {
   id          String   @id @default(cuid())
-  instagramId String   @unique
+  instagramId String
   url         String
   caption     String?
   imageUrl    String?
   hashtags    String?  // Stores hashtags as JSON string array
   author      String?
-  score       Float?   // AI relevance score
+  score       Float?   // Relevance score (hybrid ranker)
   rating      Int?     // 1 = thumbs up, -1 = thumbs down, null = unrated (training signal)
   discoveredAt DateTime @default(now())
+
+  // Engagement signals (best-effort; depends on what the scraper provides)
+  likeCount     Int?
+  commentCount  Int?
+  viewCount     Int?
+  engagementScore Float?
+
+  // Multimodal understanding / vectorization (stored as strings for SQLite portability)
+  imageDescription String?
+  visionTags       String? // JSON string array
+  embedding        String? // JSON string array of floats (vector)
+  embeddingSim     Float?  // similarity to the user's taste vector (debug/telemetry)
+
+  // Scraper source (gallery-dl, apify, etc.)
+  source         String?
   
-  userId      String?
-  user        User?    @relation(fields: [userId], references: [id])
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
   
   newsletterItems NewsletterItem[]
+
+  @@unique([userId, instagramId])
 }
 
 model Newsletter {
