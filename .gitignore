@@ -8,6 +8,7 @@ build/
 .vscode/
 .idea/
 coverage/
+.cache/
 .prisma/
 temp/
 *.db
