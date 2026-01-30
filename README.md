@@ -85,8 +85,12 @@ Make sure to comply with Instagram's terms of service and rate limits.
 
 ## Phil Notes
 
-The intention of ZeroRot is to provide a daily email newsletter containing quality posts from Instagram, tailored to the user’s taste. It is geared towards people who would normally go on Instagram to search for creative and beautiful content, but refuse to because of the addictive nature of Instagram.
+Problem: People go on Instagram to search for valuable content specific to their interests (for example, I go on Instagram to find beautiful anime art), but since that content is buried in memes on their FYP, they end up doomscrolling instead.
 
-People will only go on the website to configure their preferences for what kind of posts they want included in the newsletter, so they won’t ever spend time looking through posts collected there. On a day-to-day basis, they’ll only read the newsletter ZeroRot sends to their inbox.
 
-‘Discover Content’ and ‘Send Test Newsletter’ take a long time to run, fyi. The program works best if you input as many topics/hashtags and accounts you like as possible (press enter after each one so they save as separate items).
+Customer: Instagram users who want to find valuable content tailored to their taste in a specific category (examples: French cooking, modern farmhouse interior design, cyberpunk fashion), and don’t want exposure to brainrot.
+
+
+Solution: ZeroRot uses AI to data-scrape Instagram. Train it on the content you want to see more of, and it’ll find new content you’d like, transplant it from Instagram into a cute document, and deliver it to your inbox daily.
+
+Notes: People will only go on the website to configure their preferences for what kind of posts they want included in the newsletter, so they won’t ever spend time looking through posts collected there. On a day-to-day basis, they’ll only read the newsletter ZeroRot sends to their inbox. ‘Discover Content’ and ‘Send Test Newsletter’ take a long time to run. The program works best if you input as many topics/hashtags and accounts you like as possible (press enter after each one so they save as separate items).
