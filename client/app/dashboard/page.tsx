@@ -90,7 +90,8 @@ export default function Dashboard() {
         });
       }
     } catch (error: any) {
-      if (error.response?.status === 401) {
+      // Backend uses 401 for missing token and 403 for invalid/expired token.
+      if (error.response?.status === 401 || error.response?.status === 403) {
         localStorage.removeItem('token');
         router.push('/');
       }

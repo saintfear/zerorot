@@ -108,22 +108,24 @@ async function sendNewsletterToUser(user) {
   // Load thumbs up/down feedback for personalization
   const rated = await prisma.contentItem.findMany({
     where: { userId: user.id, rating: { not: null } },
-    select: { caption: true, hashtags: true, rating: true }
+    select: { caption: true, hashtags: true, rating: true, imageUrl: true }
   });
   const feedback = {
     liked: rated.filter(r => r.rating === 1).map(r => ({
       caption: r.caption || '',
-      hashtags: typeof r.hashtags === 'string' ? (() => { try { return JSON.parse(r.hashtags); } catch { return []; } })() : (r.hashtags || [])
+      hashtags: typeof r.hashtags === 'string' ? (() => { try { return JSON.parse(r.hashtags); } catch { return []; } })() : (r.hashtags || []),
+      imageUrl: r.imageUrl || null
     })),
     disliked: rated.filter(r => r.rating === -1).map(r => ({
       caption: r.caption || '',
-      hashtags: typeof r.hashtags === 'string' ? (() => { try { return JSON.parse(r.hashtags); } catch { return []; } })() : (r.hashtags || [])
+      hashtags: typeof r.hashtags === 'string' ? (() => { try { return JSON.parse(r.hashtags); } catch { return []; } })() : (r.hashtags || []),
+      imageUrl: r.imageUrl || null
     }))
   };
 
   const engine = String(process.env.DISCOVERY_ENGINE || '').toLowerCase().trim();
   const scoredPosts = engine === 'v2'
-    ? await discoveryEngineV2.scoreAndRank(rawPosts, preferences, feedback)
+    ? await discoveryEngineV2.scoreAndRank(rawPosts, preferences, feedback, { userId: user.id })
     : await aiContentFilter.scoreContent(rawPosts, preferences, feedback);
   const topPosts = dedupeByCaptionKeepFirst(scoredPosts.filter(post => (post.score || 0) >= 0.9)).slice(0, 5);
 

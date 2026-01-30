@@ -1,5 +1,6 @@
 const galleryDlScraper = require('./galleryDlScraper');
 const apifyInstagramScraper = require('./managedScraper/apifyInstagramScraper');
+const seedExpandDiscovery = require('./seedExpandDiscovery');
 
 /**
  * Instagram Scraper Service
@@ -141,6 +142,21 @@ class InstagramScraper {
 
     const urls = [];
 
+    // Seed-and-expand: use the user's liked accounts as seeds, expand into a cluster,
+    // harvest each account's best recent posts, then mix into the candidate pool.
+    // This runs ONLY when explicitly enabled to control cost/latency.
+    let seedExpandedPosts = [];
+    try {
+      seedExpandedPosts = await seedExpandDiscovery.discoverFromSeeds(preferences);
+      if (seedExpandedPosts.length > 0) {
+        console.log(`🌱 Seed-and-expand harvested ${seedExpandedPosts.length} posts from related accounts`);
+      }
+    } catch (e) {
+      // Don't fail discovery if expansion fails
+      console.log('⚠️ Seed-and-expand failed (continuing):', e?.message || e);
+      seedExpandedPosts = [];
+    }
+
     // Accounts the user likes (strong taste signal)
     (Array.isArray(likedAccounts) ? likedAccounts : [])
       .slice(0, 5)
@@ -169,11 +185,13 @@ class InstagramScraper {
     }
 
     const uniqueUrls = Array.from(new Set(urls));
-    if (uniqueUrls.length === 0) return [];
+    if (uniqueUrls.length === 0) return seedExpandedPosts || [];
 
     console.log(`✅ Using Apify managed scraping (${uniqueUrls.length} sources, limit ${resultsLimit})...`);
     const posts = await apifyInstagramScraper.scrapePostsByDirectUrls(uniqueUrls, { resultsLimit });
-    return posts || [];
+    const combined = [...(seedExpandedPosts || []), ...(posts || [])];
+    // Deduplicate by instagramId
+    return Array.from(new Map(combined.map(p => [p.instagramId, p])).values());
   }
 }
 

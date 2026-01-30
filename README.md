@@ -82,3 +82,11 @@ Make sure to comply with Instagram's terms of service and rate limits.
 - ✅ Email newsletter generation and sending
 - ✅ Daily automated newsletter delivery (8 AM)
 - ✅ Beautiful, modern UI with Tailwind CSS
+
+## Phil Notes
+
+The intention of ZeroRot is to provide a daily email newsletter containing quality posts from Instagram, tailored to the user’s taste. It is geared towards people who would normally go on Instagram to search for creative and beautiful content, but refuse to because of the addictive nature of Instagram.
+
+People will only go on the website to configure their preferences for what kind of posts they want included in the newsletter, so they won’t ever spend time looking through posts collected there. On a day-to-day basis, they’ll only read the newsletter ZeroRot sends to their inbox.
+
+‘Discover Content’ and ‘Send Test Newsletter’ take a long time to run, fyi. The program works best if you input as many topics/hashtags and accounts you like as possible (press enter after each one so they save as separate items).

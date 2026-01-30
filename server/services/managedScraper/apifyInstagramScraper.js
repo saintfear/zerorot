@@ -92,6 +92,54 @@ class ApifyInstagramScraper {
   }
 
   /**
+   * Best-effort mapping of an Apify "details" item (profile/post detail) to something useful.
+   * The schema varies by resultsType and Apify may add/remove fields over time, so this is intentionally flexible.
+   */
+  mapDetails(item) {
+    if (!item) return null;
+    const usernameRaw = item.username || item.ownerUsername || item.owner?.username || item.owner?.ownerUsername;
+    const username = usernameRaw ? String(usernameRaw).replace(/^@/, '') : null;
+    const followersCount = typeof item.followersCount === 'number' ? item.followersCount : null;
+
+    // Some responses include "related profiles" or similar suggestion clusters.
+    const related = [];
+    const pushUsername = (u) => {
+      const v = String(u || '').replace(/^@/, '').trim();
+      if (v) related.push(v);
+    };
+
+    const maybeArrays = [
+      item.relatedProfiles,
+      item.related,
+      item.similarAccounts,
+      item.suggestedProfiles,
+      item.suggestedUsers,
+      item.following,     // sometimes a partial list / suggestions
+      item.followedBy,    // sometimes a partial list / suggestions
+    ];
+
+    for (const arr of maybeArrays) {
+      if (!Array.isArray(arr)) continue;
+      for (const x of arr) {
+        if (typeof x === 'string') pushUsername(x);
+        else if (x && typeof x === 'object') {
+          if (x.username) pushUsername(x.username);
+          else if (x.ownerUsername) pushUsername(x.ownerUsername);
+          else if (x.user?.username) pushUsername(x.user.username);
+          else if (x.profile?.username) pushUsername(x.profile.username);
+        }
+      }
+    }
+
+    return {
+      username,
+      followersCount,
+      relatedUsernames: Array.from(new Set(related)),
+      raw: item
+    };
+  }
+
+  /**
    * Scrape posts for one or more Instagram URLs (profiles/hashtags/places).
    * @param {string[]} directUrls
    * @param {object} [options]
@@ -116,6 +164,55 @@ class ApifyInstagramScraper {
 
     // Deduplicate by instagramId
     return Array.from(new Map(mapped.map(p => [p.instagramId, p])).values());
+  }
+
+  /**
+   * Scrape "details" for one or more Instagram URLs (profile details or post details).
+   * @param {string[]} directUrls
+   */
+  async scrapeDetailsByDirectUrls(directUrls) {
+    const urls = (directUrls || []).map(u => String(u).trim()).filter(Boolean);
+    if (urls.length === 0) return [];
+
+    const input = {
+      directUrls: urls,
+      resultsType: 'details',
+      // One detail item per URL is typically enough
+      resultsLimit: 1,
+      addParentData: false
+    };
+    const items = await this.runSyncGetDatasetItems(input);
+    return items.map(i => this.mapDetails(i)).filter(Boolean);
+  }
+
+  /**
+   * Seed-and-expand helper: get "related/suggested" accounts from the public profile details payload.
+   * Note: This is NOT guaranteed to return the full following list (IG hides that behind login).
+   */
+  async expandSeedAccountsViaSuggestions(seedUsernames, options = {}) {
+    const seeds = (seedUsernames || [])
+      .map(u => String(u).replace(/^@/, '').trim())
+      .filter(Boolean);
+    if (seeds.length === 0) return [];
+
+    const maxSeeds = Number(options.maxSeeds) > 0 ? Number(options.maxSeeds) : 5;
+    const maxExpand = Number(options.maxExpand) > 0 ? Number(options.maxExpand) : 50;
+
+    const urls = seeds.slice(0, maxSeeds).map(u => `https://www.instagram.com/${u}/`);
+    const details = await this.scrapeDetailsByDirectUrls(urls);
+
+    const out = [];
+    for (const d of details) {
+      (d.relatedUsernames || []).forEach(u => out.push(u));
+    }
+
+    // Remove original seeds and dedupe
+    const seedSet = new Set(seeds.map(s => s.toLowerCase()));
+    const unique = Array.from(new Set(out.map(u => u.toLowerCase())))
+      .filter(u => !seedSet.has(u))
+      .slice(0, maxExpand);
+
+    return unique;
   }
 }
 

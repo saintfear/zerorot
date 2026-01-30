@@ -55,17 +55,19 @@ router.post('/discover', authenticateToken, async (req, res) => {
     // Load thumbs up/down feedback for better personalization
     const ratedRows = await prisma.contentItem.findMany({
       where: { userId: user.id, rating: { not: null } },
-      select: { caption: true, hashtags: true, rating: true, instagramId: true }
+      select: { caption: true, hashtags: true, rating: true, instagramId: true, imageUrl: true }
     });
     const rated = ratedRows.filter(r => !(r.instagramId || '').startsWith('mock_'));
     const feedback = {
       liked: rated.filter(r => r.rating === 1).map(r => ({
         caption: r.caption || '',
-        hashtags: typeof r.hashtags === 'string' ? (() => { try { return JSON.parse(r.hashtags); } catch { return []; } })() : (r.hashtags || [])
+        hashtags: typeof r.hashtags === 'string' ? (() => { try { return JSON.parse(r.hashtags); } catch { return []; } })() : (r.hashtags || []),
+        imageUrl: r.imageUrl || null
       })),
       disliked: rated.filter(r => r.rating === -1).map(r => ({
         caption: r.caption || '',
-        hashtags: typeof r.hashtags === 'string' ? (() => { try { return JSON.parse(r.hashtags); } catch { return []; } })() : (r.hashtags || [])
+        hashtags: typeof r.hashtags === 'string' ? (() => { try { return JSON.parse(r.hashtags); } catch { return []; } })() : (r.hashtags || []),
+        imageUrl: r.imageUrl || null
       }))
     };
 
@@ -74,7 +76,7 @@ router.post('/discover', authenticateToken, async (req, res) => {
     let scoredPosts = [];
     if (engine === 'v2') {
       console.log('🤖 Scoring content with Discovery Engine v2 (vision + embeddings + engagement)...');
-      scoredPosts = await discoveryEngineV2.scoreAndRank(rawPosts, preferences, feedback);
+      scoredPosts = await discoveryEngineV2.scoreAndRank(rawPosts, preferences, feedback, { userId: user.id });
     } else {
       console.log('🤖 Scoring content with AI (using your thumbs up/down)...');
       scoredPosts = await aiContentFilter.scoreContent(rawPosts, preferences, feedback);

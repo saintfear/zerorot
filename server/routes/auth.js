@@ -6,6 +6,39 @@ const { PrismaClient } = require('@prisma/client');
 const router = express.Router();
 const prisma = new PrismaClient();
 
+function mapAuthError(error) {
+  const message = (error && error.message) ? String(error.message) : '';
+  const code = error && error.code ? String(error.code) : '';
+
+  // Prisma: missing tables / db not initialized (common on fresh localhost)
+  // - P2021: table does not exist
+  // SQLite can also surface "no such table: User" depending on engine.
+  if (
+    code === 'P2021' ||
+    message.toLowerCase().includes('no such table') ||
+    (message.toLowerCase().includes('does not exist') && message.toLowerCase().includes('table'))
+  ) {
+    return {
+      status: 503,
+      body: {
+        error:
+          'Database is not initialized. In the zerorot folder run: npx prisma db push (or npx prisma migrate dev), then restart the server.'
+      }
+    };
+  }
+
+  // JWT secret missing
+  if (message.toLowerCase().includes('secret or private key must have a value')) {
+    return {
+      status: 500,
+      body: { error: 'Server misconfigured: JWT_SECRET is not set.' }
+    };
+  }
+
+  // Default: keep generic message (don’t leak internals)
+  return { status: 500, body: { error: 'Internal server error' } };
+}
+
 // Sign up
 router.post('/signup', async (req, res) => {
   try {
@@ -54,7 +87,8 @@ router.post('/signup', async (req, res) => {
     });
   } catch (error) {
     console.error('Signup error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    const mapped = mapAuthError(error);
+    res.status(mapped.status).json(mapped.body);
   }
 });
 
@@ -100,7 +134,8 @@ router.post('/login', async (req, res) => {
     });
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    const mapped = mapAuthError(error);
+    res.status(mapped.status).json(mapped.body);
   }
 });
 

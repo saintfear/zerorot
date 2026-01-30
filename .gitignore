@@ -1,9 +1,15 @@
 node_modules/
 .env
 .env.local
+.venv-aesthetic/
+.venv*/
+.venv/
+.env.*
 .DS_Store
 dist/
 build/
+client/.next/
+.next/
 *.log
 .vscode/
 .idea/
@@ -19,3 +25,4 @@ prisma/dev.db-journal
 *.swp
 *.swo
 *~
+*.save

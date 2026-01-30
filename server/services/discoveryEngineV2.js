@@ -1,5 +1,6 @@
 const OpenAI = require('openai');
 const aiContentFilter = require('./aiContentFilter');
+const beautyPipeline = require('./beautyPipeline');
 
 function clamp01(x) {
   if (Number.isNaN(x)) return 0;
@@ -132,6 +133,211 @@ Return JSON with:
     return { visionScore, visionTags, imageDescription, aiSignals };
   }
 
+  wantsAiArt(preferences) {
+    return Array.isArray(preferences?.topics) && preferences.topics.some(t => /ai\s*art/i.test(String(t)));
+  }
+
+  /**
+   * Stage 3: "Vibe Check" batch ranking (curator-style).
+   *
+   * Prompt goal: rank images by soulful / wabi-sabi / emotional resonance
+   * and away from overly commercial / ad-like vibes.
+   *
+   * Returns:
+   * - rankings: array of indices (0..n-1) best->worst
+   * - items: array of { index, vibeScore 0..1, tags[], imageDescription, aiSignals }
+   */
+  async vibeCheckBatch(posts, preferences, feedback) {
+    const list = Array.isArray(posts) ? posts : [];
+    const images = list.filter(p => p && p.imageUrl).slice(0, 8); // keep it sane
+    if (images.length === 0) {
+      return { rankings: [], items: [] };
+    }
+
+    // If no OpenAI key is present, don't attempt.
+    if (!String(process.env.OPENAI_API_KEY || '').trim()) {
+      return { rankings: images.map((_, i) => i), items: [] };
+    }
+    if (String(process.env.BEAUTY_VIBE_DISABLED || '').toLowerCase().trim() === 'true') {
+      return { rankings: images.map((_, i) => i), items: [] };
+    }
+
+    const wantsAiArt = this.wantsAiArt(preferences);
+    const likedAccounts = Array.isArray(preferences?.likedAccounts) ? preferences.likedAccounts.slice(0, 6) : [];
+    const likedHints = (feedback?.liked || []).slice(0, 6).map(x => (x.caption || '').slice(0, 160));
+    const dislikedHints = (feedback?.disliked || []).slice(0, 6).map(x => (x.caption || '').slice(0, 160));
+
+    const promptText = `You are a high-end art curator.
+You will be shown a small set of Instagram post images (numbered 0..${images.length - 1}).
+
+Your job:
+- Rank them by which feels most "soulful" and least "commercial".
+- Emphasize wabi-sabi aesthetics, emotional resonance, restraint, texture, composition, and authenticity.
+- Penalize obvious ads, influencer thirst traps, overly polished stock-photo vibes, and generic trends.
+- The user strongly prefers real, non-AI-generated content. Set aiSignals=true only if strongly likely.
+${wantsAiArt ? '- The user is okay with AI art.\n' : '- Unless the user explicitly wants AI art, strongly penalize AI-generated imagery.\n'}
+
+User taste context (light, don't overfit):
+- Liked accounts: ${JSON.stringify(likedAccounts)}
+- Captions they liked: ${JSON.stringify(likedHints)}
+- Captions they disliked: ${JSON.stringify(dislikedHints)}
+
+Return STRICT JSON only, with:
+{
+  "rankings": [2,0,1,...], // best->worst, indices 0..${images.length - 1}
+  "items": [
+    { "index": 0, "vibeScore": 0.0, "tags": ["..."], "imageDescription": "...", "aiSignals": false },
+    ...
+  ]
+}
+
+vibeScore: 0..1 where 1 is exceptionally soulful / non-commercial.`;
+
+    const response = await this.openai.chat.completions.create({
+      model: this.visionModel,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You are a strict JSON-only response generator. Do not include markdown. ' +
+            'If uncertain, be conservative about aiSignals.'
+        },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: promptText },
+            ...images.map(p => ({ type: 'image_url', image_url: { url: p.imageUrl } }))
+          ]
+        }
+      ],
+      response_format: { type: 'json_object' }
+    });
+
+    const raw = response?.choices?.[0]?.message?.content || '{}';
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      parsed = {};
+    }
+
+    const rankings = Array.isArray(parsed?.rankings)
+      ? parsed.rankings.map(x => Number(x)).filter(x => Number.isInteger(x) && x >= 0 && x < images.length)
+      : [];
+
+    const itemsRaw = Array.isArray(parsed?.items) ? parsed.items : [];
+    const items = itemsRaw
+      .map(x => {
+        const index = Number(x?.index);
+        if (!Number.isInteger(index) || index < 0 || index >= images.length) return null;
+        const vibeScore = x?.vibeScore != null ? clamp01(Number(x.vibeScore)) : null;
+        const tags = Array.isArray(x?.tags) ? x.tags.map(t => String(t).slice(0, 48)) : [];
+        const imageDescription = x?.imageDescription ? String(x.imageDescription).slice(0, 500) : null;
+        const aiSignals = !!x?.aiSignals;
+        return { index, vibeScore, tags, imageDescription, aiSignals };
+      })
+      .filter(Boolean);
+
+    // Ensure rankings is a full permutation
+    const seen = new Set(rankings);
+    const filled = [...rankings];
+    for (let i = 0; i < images.length; i++) if (!seen.has(i)) filled.push(i);
+
+    return { rankings: filled, items };
+  }
+
+  /**
+   * Tournament-style curation so we can rank ~20 images without sending 20 at once.
+   * Returns posts sorted best->worst with vibeScore attached.
+   */
+  async vibeTournament(posts, preferences, feedback) {
+    const groupSize = Number(process.env.BEAUTY_VIBE_GROUP_SIZE) > 0 ? Number(process.env.BEAUTY_VIBE_GROUP_SIZE) : 5;
+    const keepPerGroup = Number(process.env.BEAUTY_VIBE_KEEP_PER_GROUP) > 0 ? Number(process.env.BEAUTY_VIBE_KEEP_PER_GROUP) : 2;
+    const finalKeep = Number(process.env.BEAUTY_FINAL_CURATION_K) > 0 ? Number(process.env.BEAUTY_FINAL_CURATION_K) : 20;
+
+    let pool = (Array.isArray(posts) ? posts : []).filter(p => p && p.imageUrl).slice(0, finalKeep);
+    if (pool.length <= 1) return pool;
+
+    // Keep any metadata we get back
+    const metaById = new Map(); // instagramId -> { vibeScore, tags, imageDescription, aiSignals }
+
+    const attachMeta = (batch, res) => {
+      const items = Array.isArray(res?.items) ? res.items : [];
+      for (const it of items) {
+        const p = batch[it.index];
+        if (!p) continue;
+        const id = p.instagramId || p.url || p.imageUrl;
+        if (!id) continue;
+        metaById.set(id, {
+          vibeScore: typeof it.vibeScore === 'number' ? it.vibeScore : null,
+          visionTags: it.tags || [],
+          imageDescription: it.imageDescription || null,
+          aiSignals: !!it.aiSignals
+        });
+      }
+    };
+
+    // Round-robin elimination until small enough, then final rank
+    while (pool.length > groupSize) {
+      const next = [];
+      for (let i = 0; i < pool.length; i += groupSize) {
+        const batch = pool.slice(i, i + groupSize);
+        if (batch.length === 0) continue;
+        if (batch.length === 1) {
+          next.push(batch[0]);
+          continue;
+        }
+
+        let res;
+        try {
+          res = await this.vibeCheckBatch(batch, preferences, feedback);
+        } catch {
+          res = { rankings: batch.map((_, j) => j), items: [] };
+        }
+
+        attachMeta(batch, res);
+        const order = Array.isArray(res?.rankings) ? res.rankings : batch.map((_, j) => j);
+        const keep = Math.min(keepPerGroup, batch.length);
+        for (let k = 0; k < keep; k++) {
+          const idx = order[k];
+          if (batch[idx]) next.push(batch[idx]);
+        }
+      }
+      pool = next;
+      if (pool.length === 0) break;
+    }
+
+    if (pool.length <= 1) return pool;
+
+    // Final ranking
+    let finalRes;
+    try {
+      finalRes = await this.vibeCheckBatch(pool, preferences, feedback);
+    } catch {
+      finalRes = { rankings: pool.map((_, j) => j), items: [] };
+    }
+    attachMeta(pool, finalRes);
+
+    const order = Array.isArray(finalRes?.rankings) ? finalRes.rankings : pool.map((_, j) => j);
+    const ranked = order.map(i => pool[i]).filter(Boolean);
+
+    // Attach meta + provide a fallback vibeScore from position if missing
+    const out = ranked.map((p, idx) => {
+      const id = p.instagramId || p.url || p.imageUrl;
+      const meta = id ? metaById.get(id) : null;
+      const fallback = ranked.length > 1 ? (1 - idx / (ranked.length - 1)) : 1;
+      return {
+        ...p,
+        vibeScore: typeof meta?.vibeScore === 'number' ? meta.vibeScore : clamp01(fallback),
+        visionTags: Array.isArray(meta?.visionTags) ? meta.visionTags : (p.visionTags || []),
+        imageDescription: meta?.imageDescription || p.imageDescription || null,
+        aiSignals: meta?.aiSignals != null ? meta.aiSignals : (p.aiSignals || false)
+      };
+    });
+
+    return out;
+  }
+
   buildTasteText(preferences, feedback) {
     const topics = Array.isArray(preferences?.topics) ? preferences.topics : [];
     const keywords = Array.isArray(preferences?.keywords) ? preferences.keywords : [];
@@ -170,9 +376,126 @@ Return JSON with:
    * - embedding similarity to the user's taste
    * - engagement signals
    */
-  async scoreAndRank(posts, preferences, feedback) {
+  async scoreAndRank(posts, preferences, feedback, options = {}) {
     const inputPosts = Array.isArray(posts) ? posts : [];
     if (inputPosts.length === 0) return [];
+
+    const userId = options?.userId || null;
+
+    // If beauty pipeline is enabled, it becomes the primary discovery/ranking mechanism.
+    // We keep legacy v2 logic as a fallback when models/keys are unavailable.
+    const useBeauty = beautyPipeline.isEnabled();
+
+    if (useBeauty) {
+      try {
+        // 0) Cheap pre-ranking just to keep compute bounded
+        const preRanked = aiContentFilter.fallbackScoring(inputPosts, preferences, feedback);
+        const bulkMax = Number(process.env.BEAUTY_BULK_CANDIDATES) > 0 ? Number(process.env.BEAUTY_BULK_CANDIDATES) : 220;
+        const bulk = preRanked.slice(0, Math.min(bulkMax, preRanked.length));
+
+        // 1) Universal beauty filter (LAION aesthetic score)
+        const withUniversal = await beautyPipeline.scoreUniversalBeauty(bulk);
+        const minAesthetic = Number(process.env.BEAUTY_AESTHETIC_MIN) > 0 ? Number(process.env.BEAUTY_AESTHETIC_MIN) : 7.0;
+        const requireAesthetic = String(process.env.BEAUTY_REQUIRE_AESTHETIC || 'true').toLowerCase().trim() === 'true';
+        const technicalEnabled = String(process.env.BEAUTY_TECHNICAL_ENABLED || '').toLowerCase().trim() === 'true';
+        const minTechnical = Number(process.env.BEAUTY_TECHNICAL_MIN) > 0 ? Number(process.env.BEAUTY_TECHNICAL_MIN) : 4.5;
+
+        const stage1 = withUniversal
+          .filter(p => p && p.imageUrl)
+          .filter(p => {
+            if (typeof p.aestheticScore === 'number') return p.aestheticScore >= minAesthetic;
+            return !requireAesthetic;
+          })
+          .filter(p => {
+            if (!technicalEnabled) return true;
+            if (typeof p.technicalScore === 'number') return p.technicalScore >= minTechnical;
+            // If technical scoring is enabled but unavailable, don't hard-fail the post.
+            return true;
+          });
+
+        if (stage1.length === 0) {
+          // Nothing survived, fall back to legacy v2.
+          throw new Error('beauty_stage1_empty');
+        }
+
+        // 2) Personal beauty (CLIP taste similarity)
+        const tasteVector = await beautyPipeline.getTasteVector({ userId, preferences, feedback });
+        const withTaste = await beautyPipeline.scorePersonalBeauty(stage1, tasteVector);
+
+        // Engagement score for tie-breaking / light safety
+        const enriched = withTaste.map(p => {
+          const likeCount = safeNum(p.likeCount);
+          const commentCount = safeNum(p.commentCount);
+          const viewCount = safeNum(p.viewCount);
+          const engagementScore = engagementScoreFromSignals({ likeCount, commentCount, viewCount });
+
+          // Normalize aesthetic into 0..1 around the configured threshold
+          const aes = typeof p.aestheticScore === 'number' ? p.aestheticScore : null;
+          const aestheticNorm = aes == null ? 0.5 : clamp01((aes - minAesthetic) / Math.max(1e-6, (10 - minAesthetic)));
+
+          const tasteScore = typeof p.tasteScore === 'number' ? clamp01(p.tasteScore) : 0.5;
+          const tech = typeof p.technicalScore === 'number' ? clamp01(p.technicalScore / 10) : null;
+          const baseBeauty = clamp01(
+            0.55 * tasteScore +
+            0.30 * aestheticNorm +
+            (technicalEnabled && tech != null ? 0.10 * tech : 0) +
+            0.05 * engagementScore
+          );
+
+          return {
+            ...p,
+            likeCount,
+            commentCount,
+            viewCount,
+            engagementScore,
+            aestheticNorm,
+            technicalScore: typeof p.technicalScore === 'number' ? p.technicalScore : null,
+            baseBeauty,
+            // For DB/debug compatibility, store CLIP embedding in "embedding"
+            embedding: Array.isArray(p.clipEmbedding) ? p.clipEmbedding : (p.embedding || null),
+            embeddingSim: typeof p.tasteSim === 'number' ? p.tasteSim : (p.embeddingSim || null)
+          };
+        });
+
+        enriched.sort((a, b) => (b.baseBeauty || 0) - (a.baseBeauty || 0));
+
+        // 3) Vibe check (Vision LLM) on top slice
+        const vibeCandidates = enriched.slice(0, Math.min(enriched.length, Number(process.env.BEAUTY_FINAL_CURATION_K) > 0 ? Number(process.env.BEAUTY_FINAL_CURATION_K) : 20));
+        let curated = [];
+        try {
+          curated = await this.vibeTournament(vibeCandidates, preferences, feedback);
+        } catch {
+          curated = vibeCandidates.map((p, i) => ({ ...p, vibeScore: clamp01(1 - i / Math.max(1, vibeCandidates.length - 1)) }));
+        }
+
+        const wantsAiArt = this.wantsAiArt(preferences);
+        const curatedIds = new Set(curated.map(p => p.instagramId || p.url || p.imageUrl).filter(Boolean));
+
+        const curatedWithFinal = curated.map(p => {
+          const vibe = typeof p.vibeScore === 'number' ? clamp01(p.vibeScore) : 0.5;
+          let final = clamp01(0.70 * vibe + 0.30 * (p.baseBeauty || 0.5));
+          if (!wantsAiArt && p.aiSignals) final = clamp01(final - 0.35);
+          return { ...p, finalScore: final };
+        });
+        curatedWithFinal.sort((a, b) => (b.finalScore || 0) - (a.finalScore || 0));
+
+        const rest = enriched
+          .filter(p => !curatedIds.has(p.instagramId || p.url || p.imageUrl))
+          .map(p => ({ ...p, finalScore: clamp01(0.85 * (p.baseBeauty || 0.5)) }));
+
+        const allRanked = [...curatedWithFinal, ...rest];
+        allRanked.sort((a, b) => (b.finalScore || 0) - (a.finalScore || 0));
+
+        // Preserve the output contract used by callers (use .score)
+        return allRanked.map(p => ({
+          ...p,
+          // Make scores "peaky" enough that top picks usually clear the existing >= 0.9 threshold.
+          score: clamp01(0.55 + 0.45 * (p.finalScore || 0))
+        }));
+      } catch (e) {
+        // fallthrough to legacy v2 logic below
+      }
+    }
 
     // 1) Cheap pre-ranking (text heuristics + thumbs up/down terms)
     const preRanked = aiContentFilter.fallbackScoring(inputPosts, preferences, feedback);
@@ -236,7 +559,7 @@ Return JSON with:
     }
 
     // 4) Hybrid score
-    const wantsAiArt = Array.isArray(preferences?.topics) && preferences.topics.some(t => /ai\s*art/i.test(String(t)));
+    const wantsAiArt = this.wantsAiArt(preferences);
 
     const ranked = withVision.map(p => {
       const textScore = safeNum(p.score) ?? 0.5; // from fallback scoring
