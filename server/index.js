@@ -32,6 +32,23 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'ZeroRot API is running' });
 });
 
+// Serve Next.js static export (client/out) for all non-API routes
+const outPath = path.join(__dirname, '..', 'client', 'out');
+app.use(express.static(outPath, { index: false }));
+app.get('*', (req, res) => {
+  // Skip API routes (already handled above)
+  if (req.path.startsWith('/api')) return res.status(404).json({ error: 'Not found' });
+  // Serve index.html for SPA-style routing (e.g. /dashboard without trailing slash)
+  const reqPath = req.path.endsWith('/') ? req.path : req.path + '/';
+  const filePath = path.join(outPath, reqPath === '/' ? 'index.html' : reqPath.slice(1) + 'index.html');
+  const fs = require('fs');
+  if (fs.existsSync(filePath)) {
+    res.sendFile(filePath);
+  } else {
+    res.sendFile(path.join(outPath, 'index.html'));
+  }
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`🚀 ZeroRot server running on http://localhost:${PORT}`);

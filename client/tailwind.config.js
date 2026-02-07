@@ -8,8 +8,11 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        'typewriter': ['Special Elite', 'Courier New', 'monospace'],
-        'mono': ['Courier Prime', 'Courier New', 'monospace'],
+        // Keep existing class names, but switch to warmer typography.
+        // `font-typewriter` becomes a soft editorial serif for headings.
+        'typewriter': ['Fraunces', 'Iowan Old Style', 'Palatino', 'Palatino Linotype', 'Georgia', 'ui-serif', 'serif'],
+        // `font-mono` becomes a friendly, readable sans for body copy.
+        'mono': ['"Source Sans 3"', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
       },
       colors: {
         antique: {

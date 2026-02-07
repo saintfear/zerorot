@@ -63,13 +63,13 @@ class EmailService {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-    /* Warm vintage “typewriter + antiqued glass” */
+    /* Warm vintage paper */
     body {
       margin: 0;
       padding: 0;
       background: #f6efe1; /* parchment */
       color: #2b231a;      /* warm ink */
-      font-family: "Courier New", Courier, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-family: "Iowan Old Style", Palatino, "Palatino Linotype", Georgia, "Times New Roman", Times, serif;
       line-height: 1.6;
     }
     .wrap {
@@ -91,7 +91,7 @@ class EmailService {
       padding: 18px 20px 14px;
     }
     .mast {
-      font-family: Georgia, "Times New Roman", Times, serif;
+      font-family: "Iowan Old Style", Palatino, "Palatino Linotype", Georgia, "Times New Roman", Times, serif;
       letter-spacing: 0.12em;
       text-transform: uppercase;
       font-size: 12px;
@@ -115,7 +115,7 @@ class EmailService {
     }
     /* Gentle defaults for content blocks */
     .content h2, .content h3 {
-      font-family: Georgia, "Times New Roman", Times, serif;
+      font-family: "Iowan Old Style", Palatino, "Palatino Linotype", Georgia, "Times New Roman", Times, serif;
       color: #2b231a;
       margin: 16px 0 8px;
     }
@@ -149,7 +149,7 @@ class EmailService {
       <div class="glass">
         <p class="mast">ZeroRot · daily newsletter</p>
         <h1 class="title">Today’s picks</h1>
-        <p class="sub">A warm little bundle of posts picked for your taste. Tap 👍 / 👎 right from your inbox.</p>
+        <p class="sub">A warm little bundle of posts picked for your taste. Rate posts right from your inbox.</p>
       </div>
       <div class="content">
         <div class="rule"></div>

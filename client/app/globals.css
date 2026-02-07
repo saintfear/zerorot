@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Special+Elite&family=Courier+Prime:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Source+Sans+3:wght@400;600;700&display=swap');
 
 :root {
   --foreground-rgb: 60, 40, 30;
@@ -17,7 +17,7 @@ body {
       rgb(var(--background-start-rgb)),
       rgb(var(--background-end-rgb))
     );
-  font-family: 'Courier Prime', 'Courier New', monospace;
+  font-family: "Source Sans 3", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
 /* Antique paper texture effect */
@@ -30,8 +30,8 @@ body {
 
 /* Typewriter text effect */
 .typewriter {
-  font-family: 'Special Elite', 'Courier New', monospace;
-  letter-spacing: 0.05em;
+  font-family: Fraunces, "Iowan Old Style", Palatino, "Palatino Linotype", Georgia, ui-serif, serif;
+  letter-spacing: 0.01em;
 }
 
 /* Warm antique card */
